@@ -1,0 +1,34 @@
+name: otel_flutter_bridge
+description: >-
+  Makes add-to-app Flutter apps emit correct OpenTelemetry traces from both
+  Dart and native code, with privacy-by-default redaction and no swizzling.
+version: 0.1.0-dev.1
+repository: https://github.com/luizroddev/otel_flutter_bridge
+issue_tracker: https://github.com/luizroddev/otel_flutter_bridge/issues
+topics: [opentelemetry, observability, tracing, add-to-app]
+resolution: workspace
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+  flutter: ">=3.27.0"
+
+dependencies:
+  dartastic_opentelemetry: 0.11.0
+  fixnum: ^1.1.1
+  flutter:
+    sdk: flutter
+  http: ^1.2.0
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  plugin:
+    platforms:
+      android:
+        package: dev.luizrod.otel_flutter_bridge
+        pluginClass: OtelFlutterBridgePlugin
+      ios:
+        pluginClass: OtelFlutterBridgePlugin

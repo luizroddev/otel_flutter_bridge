@@ -1,0 +1,11 @@
+name: otel_flutter_bridge_workspace
+publish_to: none
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+workspace:
+  - packages/otel_flutter_bridge
+  - packages/otel_flutter_bridge/example
+  - packages/otel_flutter_bridge_dio
+  - tools/demo_backend

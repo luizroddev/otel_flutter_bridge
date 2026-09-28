@@ -1,0 +1,12 @@
+# Local tracing backend for development and demos.
+#   docker compose up -d
+#   Jaeger UI:   http://localhost:16686
+#   OTLP/HTTP:   http://localhost:4318  (what the app sends to)
+services:
+  jaeger:
+    image: jaegertracing/jaeger:2.10.0
+    ports:
+      - "16686:16686" # UI
+      - "4318:4318"   # OTLP over HTTP
+      - "4317:4317"   # OTLP over gRPC
+    restart: unless-stopped

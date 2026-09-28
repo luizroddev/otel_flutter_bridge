@@ -1,0 +1,34 @@
+PODS:
+  - Flutter (1.0.0)
+  - OpenTelemetry-Swift-Api (2.5.1)
+  - OpenTelemetry-Swift-Sdk (2.5.1):
+    - OpenTelemetry-Swift-Api (= 2.5.1)
+  - otel_flutter_bridge (0.1.0):
+    - Flutter
+    - OpenTelemetry-Swift-Api (= 2.5.1)
+    - OpenTelemetry-Swift-Sdk (= 2.5.1)
+
+DEPENDENCIES:
+  - Flutter (from `Flutter`)
+  - otel_flutter_bridge (from `.symlinks/plugins/otel_flutter_bridge/ios`)
+
+SPEC REPOS:
+  trunk:
+    - OpenTelemetry-Swift-Api
+    - OpenTelemetry-Swift-Sdk
+
+EXTERNAL SOURCES:
+  Flutter:
+    :path: Flutter
+  otel_flutter_bridge:
+    :path: ".symlinks/plugins/otel_flutter_bridge/ios"
+
+SPEC CHECKSUMS:
+  Flutter: cabc95a1d2626b1b06e7179b784ebcf0c0cde467
+  OpenTelemetry-Swift-Api: 3be9043f6288eb4ac3cbe7548b5bd45fb4ed5849
+  OpenTelemetry-Swift-Sdk: d9fa7bc839350f5a81467a5e877f727a8a77712d
+  otel_flutter_bridge: 55c2b475fbd6f92291dee048f23ca098e8b281f8
+
+PODFILE CHECKSUM: 3c63482e143d1b91d2d2560aee9fb04ecc74ac7e
+
+COCOAPODS: 1.16.2
