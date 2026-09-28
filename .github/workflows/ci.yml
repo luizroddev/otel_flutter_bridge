@@ -1,0 +1,73 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  dart:
+    name: Dart (Flutter ${{ matrix.flutter }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Add the oldest Flutter version you support next to stable.
+        flutter: ["stable"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: ${{ matrix.flutter }}
+          cache: true
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed packages tools
+      - run: flutter analyze
+      - run: flutter test
+        working-directory: packages/otel_flutter_bridge
+      - run: flutter test
+        working-directory: packages/otel_flutter_bridge_dio
+
+  integration:
+    name: Integration (Jaeger)
+    runs-on: ubuntu-latest
+    services:
+      jaeger:
+        image: jaegertracing/jaeger:2.10.0
+        ports: ["4318:4318", "16686:16686"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter test test/integration/jaeger_test.dart
+        working-directory: packages/otel_flutter_bridge
+        env:
+          OTEL_JAEGER_TEST: "1"
+
+  swift:
+    name: Swift core tests
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - run: swift test
+        working-directory: native_tests/ios
+
+  ios-example:
+    name: iOS example build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter pub get
+      - run: flutter build ios --simulator --debug
+        working-directory: packages/otel_flutter_bridge/example

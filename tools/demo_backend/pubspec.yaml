@@ -1,0 +1,10 @@
+name: demo_backend
+description: Tiny HTTP server that continues the app's trace, for local demos only.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  dartastic_opentelemetry: 0.11.0

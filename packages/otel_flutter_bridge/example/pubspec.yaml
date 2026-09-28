@@ -1,0 +1,23 @@
+name: otel_flutter_bridge_example
+description: Demonstrates otel_flutter_bridge end to end against a local Jaeger.
+publish_to: none
+resolution: workspace
+
+environment:
+  sdk: ">=3.6.0 <4.0.0"
+
+dependencies:
+  dartastic_opentelemetry: 0.11.0
+  dio: ^5.4.0
+  flutter:
+    sdk: flutter
+  otel_flutter_bridge: any
+  otel_flutter_bridge_dio: any
+
+dev_dependencies:
+  flutter_lints: ^6.0.0
+  flutter_test:
+    sdk: flutter
+
+flutter:
+  uses-material-design: true

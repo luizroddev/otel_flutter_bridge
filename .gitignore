@@ -1,0 +1,31 @@
+# Dart / Flutter
+.dart_tool/
+.packages
+build/
+.flutter-plugins
+.flutter-plugins-dependencies
+pubspec_overrides.yaml
+*.iml
+.idea/
+.vscode/
+
+# iOS
+**/Pods/
+**/.symlinks/
+**/xcuserdata/
+**/DerivedData/
+**/Flutter/ephemeral/
+**/Flutter/Generated.xcconfig
+**/Flutter/flutter_export_environment.sh
+
+# Swift package tests
+native_tests/ios/.build/
+native_tests/ios/.swiftpm/
+
+# Android
+**/local.properties
+**/.gradle/
+**/.cxx/
+
+# OS
+.DS_Store
