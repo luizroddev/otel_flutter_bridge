@@ -29,12 +29,12 @@ dependencies:
     git:
       url: https://github.com/luizroddev/otel_flutter_bridge
       path: packages/otel_flutter_bridge
-      ref: v0.1.0-dev.1
+      ref: v0.1.0-dev.2
   otel_flutter_bridge_dio:            # só se o app usa dio
     git:
       url: https://github.com/luizroddev/otel_flutter_bridge
       path: packages/otel_flutter_bridge_dio
-      ref: v0.1.0-dev.1
+      ref: v0.1.0-dev.2
 
 # Necessário enquanto o núcleo não está no pub.dev: o pacote dio o pede de lá.
 dependency_overrides:
@@ -42,7 +42,7 @@ dependency_overrides:
     git:
       url: https://github.com/luizroddev/otel_flutter_bridge
       path: packages/otel_flutter_bridge
-      ref: v0.1.0-dev.1
+      ref: v0.1.0-dev.2
 ```
 
 No iOS a biblioteca usa CocoaPods (`OpenTelemetry-Swift-Api` e `-Sdk` 2.5.1).
@@ -119,9 +119,14 @@ Escolha **um** fluxo de ponta a ponta. Três pontos de contato bastam:
    defer { span.end() }
    ```
 
-3. **HTTP**: no Dart, adicione `OtelDioInterceptor(propagateTo: {'host-da-sua-api'})`.
+3. **HTTP**: no Dart, com dio adicione `OtelDioInterceptor(propagateTo: {'host-da-sua-api'})`;
+   com `package:http`, envolva o client do app em
+   `OtelHttpClient(http.Client(), propagateTo: {'host-da-sua-api'})`.
    No nativo, troque a chamada do `URLSession` desse fluxo por
    `TracedURLSession.dataTask(with:parent: span.context)`.
+
+Para apps com Bloc ou Cubit, e para decidir onde encaixar cada peça, siga o
+[guia de instrumentação do app](app-instrumentation-guide.pt-BR.md).
 
 ## 5. Mostrar na tela
 

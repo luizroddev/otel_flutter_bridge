@@ -2,6 +2,7 @@ import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 import 'package:flutter/services.dart';
 
 import 'semantics.dart';
+import 'span_errors.dart';
 import 'traceparent.dart';
 
 /// Returns a copy of [arguments] carrying the trace context of [context]
@@ -48,11 +49,8 @@ extension TracedMethodChannel on MethodChannel {
         span,
         () => invokeMethod<T>(method, withTraceContext(arguments)),
       );
-    } catch (e, st) {
-      span
-        ..recordException(e, stackTrace: st)
-        ..setStatus(SpanStatusCode.Error, e.runtimeType.toString())
-        ..setStringAttribute('error.type', e.runtimeType.toString());
+    } catch (e) {
+      markSpanError(span, e);
       rethrow;
     } finally {
       span.end();
