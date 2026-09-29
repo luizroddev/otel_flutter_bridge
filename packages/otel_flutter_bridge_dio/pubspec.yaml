@@ -2,7 +2,7 @@ name: otel_flutter_bridge_dio
 description: >-
   Dio interceptor for otel_flutter_bridge. Creates an OpenTelemetry client span
   per request and injects the W3C traceparent header.
-version: 0.1.0-dev.2
+version: 0.1.0-dev.3
 repository: https://github.com/luizroddev/otel_flutter_bridge
 issue_tracker: https://github.com/luizroddev/otel_flutter_bridge/issues
 topics: [opentelemetry, observability, tracing, dio]

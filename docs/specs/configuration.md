@@ -23,7 +23,7 @@ Native side: `OtelFlutterBridge.shared.start(...)` in
 | `deploymentEnvironment` | `deploymentEnvironment` | none | `deployment.environment.name` |
 | `endpoint` | `endpoint` | required | `/v1/traces` appended when missing. The only host contacted |
 | `enabled` | `enabled` | `true` | Master switch |
-| `sampleRatio` | `sampleRatio` | `1.0` | Clamped to 0..1. Parent-based: children follow the root |
+| `sampleRatio` | `sampleRatio` | `1.0` | Clamped to 0..1. Parent-based: children follow the root. Also applied by trace id to native spans when they reach Dart, so traces that start in native code are sampled at the same rate |
 | `headers` | `headers` | `{}` | Never a vendor token (see SECURITY.md) |
 | `resourceAttributes` | `resourceAttributes` | `{}` | Still subject to redaction |
 | `redaction` | `redaction` | see [redaction.md](redaction.md) | |

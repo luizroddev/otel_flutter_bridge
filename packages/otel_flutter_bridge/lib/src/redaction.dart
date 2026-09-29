@@ -77,8 +77,10 @@ const defaultAllowedAttributes = <String>{
   'os.version',
   'device.model.identifier',
   'device.manufacturer',
-  // Session.
+  // Session and app context.
   sessionIdKey,
+  appScreenKey,
+  appFlowKey,
   // HTTP client.
   'http.request.method',
   'http.response.status_code',

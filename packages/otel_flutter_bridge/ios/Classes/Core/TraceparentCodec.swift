@@ -38,6 +38,26 @@ public enum TraceparentCodec {
     return parse(ctx[header] as? String)
   }
 
+  /// Reads the `app.screen` / `app.flow` Dart put next to the
+  /// `traceparent` in channel arguments. Nil when there is no trace context.
+  public static func appContext(fromChannelArguments arguments: Any?) -> AppContextValues? {
+    guard let args = arguments as? [String: Any],
+          let ctx = args[channelContextKey] as? [String: Any],
+          parse(ctx[header] as? String) != nil
+    else { return nil }
+    return AppContextValues(screen: ctx[AppContextKeys.screen] as? String,
+                            flow: ctx[AppContextKeys.flow] as? String)
+  }
+
+  /// The value to put under `channelContextKey` in the arguments of a call
+  /// from native code to Dart, read by `runWithTraceContext` in Dart.
+  public static func channelContext(traceparent: String, app: AppContextValues?) -> [String: Any] {
+    var ctx: [String: Any] = [header: traceparent]
+    if let screen = app?.screen { ctx[AppContextKeys.screen] = screen }
+    if let flow = app?.flow { ctx[AppContextKeys.flow] = flow }
+    return ctx
+  }
+
   private static func isHex(_ s: Substring, length: Int) -> Bool {
     s.count == length && s.allSatisfy { ("0"..."9").contains($0) || ("a"..."f").contains($0) }
   }

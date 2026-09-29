@@ -68,6 +68,60 @@ class OrdersFailure implements Exception {
   const OrdersFailure();
 }
 
+// One handler for three operations, like a login Bloc.
+sealed class AuthEvent {}
+
+class BiometricLogin extends AuthEvent {}
+
+class PasswordLogin extends AuthEvent {}
+
+class ForgotPassword extends AuthEvent {}
+
+class AuthBloc extends Bloc<AuthEvent, String> {
+  AuthBloc() : super('idle') {
+    on<AuthEvent>(tracedHandler(
+      'auth.event',
+      _onEvent,
+      nameOf: (e) => switch (e) {
+        BiometricLogin() || PasswordLogin() => 'auth.login',
+        ForgotPassword() => 'auth.password_reset',
+      },
+      enrich: (span, e) {
+        if (e is BiometricLogin) {
+          span.setStringAttribute('app.auth.method', 'biometric');
+        } else if (e is PasswordLogin) {
+          span.setStringAttribute('app.auth.method', 'password');
+        }
+      },
+    ));
+  }
+
+  Future<void> _onEvent(AuthEvent e, Emitter<String> emit) async =>
+      emit('${e.runtimeType}');
+}
+
+/// The Layer 2 pattern from the guide: capture the caller's context in
+/// `add` and link the handler span to it.
+final _addedFrom = Expando<Context>();
+
+class LinkedBloc extends Bloc<OrdersEvent, String> {
+  LinkedBloc() : super('idle') {
+    on<SyncEvent>(tracedHandler('orders.sync', (e, emit) {
+      final from = _addedFrom[e];
+      if (from?.span != null) {
+        Context.current.span?.addLink(from!.span!.spanContext);
+      }
+      emit('synced');
+    }));
+  }
+
+  @override
+  void add(OrdersEvent event) {
+    _addedFrom[event] = Context.current;
+    super.add(event);
+  }
+}
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
   late InMemoryTransport transport;
@@ -249,6 +303,60 @@ void main() {
       named('x.handled').status.code,
       pb.Status_StatusCode.STATUS_CODE_ERROR,
     );
+  });
+
+  test('nameOf names each operation of a shared handler', () async {
+    await init();
+    final bloc = AuthBloc();
+    final states = bloc.stream.take(3).toList();
+    bloc
+      ..add(BiometricLogin())
+      ..add(PasswordLogin())
+      ..add(ForgotPassword());
+    await states;
+    await bloc.close();
+    await OtelFlutterBridge.flush();
+
+    final names = transport.spans.map((s) => s.name).toList()..sort();
+    expect(names, ['auth.login', 'auth.login', 'auth.password_reset']);
+    final methods = transport.spans
+        .where((s) => s.name == 'auth.login')
+        .map((s) => s.attributes
+            .singleWhere((a) => a.key == 'app.auth.method')
+            .value
+            .stringValue)
+        .toList()
+      ..sort();
+    expect(methods, ['biometric', 'password']);
+  });
+
+  test('nameOf falls back to name on null or throw', () async {
+    await init();
+    await tracedHandler<String, int>('x.fallback', (a, b) {},
+        nameOf: (_) => null)('a', 1);
+    await tracedHandler<String, int>('x.thrown', (a, b) {},
+        nameOf: (_) => throw StateError('bug'))('a', 1);
+    await OtelFlutterBridge.flush();
+    expect(transport.spans.map((s) => s.name), ['x.fallback', 'x.thrown']);
+  });
+
+  test('links the handler span to the context that called add', () async {
+    await init();
+    final bloc = LinkedBloc();
+    final tracer = OTel.tracer();
+    final source = tracer.startSpan('native.push');
+    final done = bloc.stream.first;
+    tracer.withSpan(source, () => bloc.add(SyncEvent()));
+    source.end();
+    await done;
+    await bloc.close();
+    await OtelFlutterBridge.flush();
+
+    final handler = named('orders.sync');
+    final origin = named('native.push');
+    expect(handler.parentSpanId, isEmpty);
+    expect(handler.links.single.traceId, origin.traceId);
+    expect(handler.links.single.spanId, origin.spanId);
   });
 
   test('without initialize, the handler runs untraced', () async {

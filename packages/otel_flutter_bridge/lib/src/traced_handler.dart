@@ -26,18 +26,25 @@ typedef TracedHandlerEnricher<A> = void Function(Span span, A first);
 /// Do not derive it from `runtimeType`: it is obfuscated in release builds
 /// built with `--obfuscate`.
 ///
-/// The arguments are never read or recorded. Use [enrich] to add safe,
-/// low-cardinality values from the first argument (enums, booleans).
+/// When one handler serves several operations (for example one
+/// `on<AuthEvent>` for biometric login, password login and password reset),
+/// [nameOf] picks the name from the first argument. It must return fixed
+/// strings (switch on the type, never interpolate); [name] is used when it
+/// returns null or throws.
+///
+/// The arguments are never recorded. Only [nameOf] and [enrich] read the
+/// first one; use [enrich] to add safe, low-cardinality values (enums,
+/// booleans).
 ///
 /// When [handler] throws, the span gets error status and `error.type`
 /// (from [errorType], or a fixed name for common types, or `runtimeType`),
 /// never the error text. The same error is rethrown with its stack trace,
 /// so the caller (for a Bloc, `onError`) sees exactly what it would without
-/// tracing. When telemetry is
-/// not initialized, [handler] runs untraced.
+/// tracing. When telemetry is not initialized, [handler] runs untraced.
 Future<void> Function(A, B) tracedHandler<A, B>(
   String name,
   FutureOr<void> Function(A, B) handler, {
+  String? Function(A first)? nameOf,
   TracedHandlerEnricher<A>? enrich,
   String Function(Object error)? errorType,
   Tracer? tracer,
@@ -47,7 +54,7 @@ Future<void> Function(A, B) tracedHandler<A, B>(
     Span? span;
     try {
       t = tracer ?? OTel.tracer();
-      span = t.startSpan(name);
+      span = t.startSpan(_nameFor(a, name, nameOf));
     } catch (_) {
       // Telemetry never breaks the app: run untraced.
     }
@@ -90,6 +97,15 @@ Future<void> Function(A, B) tracedHandler<A, B>(
     _end(span);
     if (e != null) Error.throwWithStackTrace(e, stackTrace!);
   };
+}
+
+String _nameFor<A>(A first, String name, String? Function(A)? nameOf) {
+  if (nameOf == null) return name;
+  try {
+    return nameOf(first) ?? name;
+  } catch (_) {
+    return name;
+  }
 }
 
 void _markError(
