@@ -30,10 +30,17 @@ public enum HTTPSemantics {
 
   /// `error.type`: the status code when it is 400 or more (it wins over a
   /// validation error, such as Alamofire's `validate()`), otherwise the
-  /// error's type name, otherwise nil.
+  /// error's type, otherwise nil.
+  ///
+  /// Errors bridged from Objective-C (every `URLSession` error) report their
+  /// dynamic type as `NSError`, so `URLError` is named explicitly and other
+  /// bridged errors use their domain, which is low cardinality.
   public static func errorType(statusCode: Int?, error: Error?) -> String? {
     if let statusCode, statusCode >= 400 { return String(statusCode) }
-    if let error { return String(describing: type(of: error)) }
-    return nil
+    guard let error else { return nil }
+    if error is URLError { return "URLError" }
+    let name = String(describing: type(of: error))
+    if name == "NSError" || name.hasPrefix("__") { return (error as NSError).domain }
+    return name
   }
 }

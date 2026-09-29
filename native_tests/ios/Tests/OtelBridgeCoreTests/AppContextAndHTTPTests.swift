@@ -92,6 +92,11 @@ final class HTTPSemanticsTests: XCTestCase {
     XCTAssertEqual(HTTPSemantics.errorType(statusCode: 404, error: Validation()), "404")
     XCTAssertEqual(HTTPSemantics.errorType(statusCode: 200, error: nil), nil)
     XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: URLError(.timedOut)), "URLError")
+    // What URLSession actually hands back: an NSError in NSURLErrorDomain.
+    let fromSession = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
+    XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: fromSession), "URLError")
+    let other = NSError(domain: "com.app.payments", code: 7)
+    XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: other), "com.app.payments")
     XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: Validation()), "Validation")
   }
 }
