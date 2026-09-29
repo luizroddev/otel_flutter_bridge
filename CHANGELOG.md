@@ -5,6 +5,8 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
 
 ## Unreleased
 
+## 0.1.0-dev.2
+
 - `OtelHttpClient`: `package:http` client wrapper with one client span per
   request and `traceparent` injection, same rules as the dio interceptor.
 - `tracedHandler`: wraps Bloc event handlers (or any two-argument callback)
