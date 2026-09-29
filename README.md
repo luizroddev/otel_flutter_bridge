@@ -77,15 +77,21 @@ TracedURLSession.dataTask(with: request, parent: span.context) { ... }
 ```
 
 ```dart
+// package:http: wrap the app's single client and inject it.
+final client = OtelHttpClient(http.Client(), propagateTo: {'api.example.com'});
+
 // dio
 final dio = Dio()..interceptors.add(OtelDioInterceptor(propagateTo: {'api.example.com'}));
+
+// Bloc: one span per handled event; HTTP inside becomes its child.
+on<LoadOrders>(tracedHandler('orders.load', _onLoadOrders));
 ```
 
 ## Repository
 
 | Path | What |
 |---|---|
-| `packages/otel_flutter_bridge` | Core plugin: init, session, redaction, exporter, native bridge, channel propagation, inspector. iOS side in `ios/Classes` |
+| `packages/otel_flutter_bridge` | Core plugin: init, session, redaction, exporter, native bridge, channel propagation, `package:http` client, Bloc handler helper, inspector. iOS side in `ios/Classes` |
 | `packages/otel_flutter_bridge_dio` | `dio` interceptor |
 | `packages/otel_flutter_bridge/example` | POC app: scenarios + inspector |
 | `tools/demo_backend` | Tiny server that continues the trace |
@@ -95,6 +101,7 @@ final dio = Dio()..interceptors.add(OtelDioInterceptor(propagateTo: {'api.exampl
 | `docs/extension-points.md` | Every seam for app-specific customization |
 | `docs/roadmap.md` | Milestones |
 | `docs/integration-guide.pt-BR.md` | Step-by-step guide (Portuguese) to add the library to an existing add-to-app project |
+| `docs/app-instrumentation-guide.pt-BR.md` | How to review an app (http, dio, Bloc, Cubit, channels) and instrument it, case by case (Portuguese) |
 
 ## Development
 

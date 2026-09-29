@@ -1,6 +1,7 @@
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
+import 'package:http/http.dart' as http;
 import 'package:otel_flutter_bridge/otel_flutter_bridge.dart';
 import 'package:otel_flutter_bridge_dio/otel_flutter_bridge_dio.dart';
 
@@ -11,6 +12,9 @@ const nativeChannel = MethodChannel('poc/native');
 
 final _dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 3)))
   ..interceptors.add(OtelDioInterceptor());
+
+/// The app's single `package:http` client, traced.
+final _http = OtelHttpClient(http.Client());
 
 Tracer get _tracer => OTel.tracer();
 
@@ -108,6 +112,15 @@ final scenarios = <Scenario>[
     () => _inSpan('payment.tap', (_) async {
       await nativeChannel.invokeTraced<void>('nativeFailure');
       return 'ok';
+    }),
+  ),
+  Scenario(
+    '8. HTTP pelo package:http',
+    'OtelHttpClient: span de cliente + traceparent, igual ao dio.',
+    () => _inSpan('orders.load.http', (_) async {
+      final r = await _http
+          .get(Uri.parse('${PocConfig.demoBackend}/api/orders/12345'));
+      return 'HTTP ${r.statusCode}';
     }),
   ),
 ];

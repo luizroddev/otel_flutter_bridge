@@ -11,6 +11,7 @@ dependencies:
   dio: ^5.4.0
   flutter:
     sdk: flutter
+  http: ^1.2.0
   otel_flutter_bridge: any
   otel_flutter_bridge_dio: any
 

@@ -18,6 +18,8 @@ the library without forking it.
 | `TelemetryInspectorPage` / `View` | `package:otel_flutter_bridge/inspector.dart` | On-screen inspector for debug menus |
 | `OtelDioInterceptor(filter:, enrich:, propagateTo:)` | dio package | Skip requests, add attributes, limit `traceparent` to own hosts |
 | `invokeTraced` / `withTraceContext` | any `MethodChannel` | Continue the trace in native code |
+| `OtelHttpClient(inner, filter:, enrich:, propagateTo:)` | the app's `http.Client` | Same as the dio interceptor, for `package:http` |
+| `tracedHandler(name, handler, enrich:, errorType:)` | Bloc `on<E>` or any two-argument callback | One span per handled event; children follow |
 
 ## iOS
 
