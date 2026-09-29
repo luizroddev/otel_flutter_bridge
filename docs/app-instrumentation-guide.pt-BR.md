@@ -16,7 +16,7 @@ Pré-requisito: a biblioteca já inicializada (passos 1 a 3 do
 | `tracedHandler` para handlers de Bloc | Quais handlers rastrear e o nome de cada span |
 | `invokeTraced` para canais | Atributos `app.*` (`enrich`, `enrichers`) |
 | `AppContext` (tela e fluxo carimbados no início de cada span) | Quando atualizar a tela e o fluxo (navegação) |
-| iOS: `HTTPClientSpan`, `traced(channel:)`, `invokeTraced`, `bind`, `task`, `appContext` | O ponto único de rede (Alamofire), o registro dos canais, as telas nativas |
+| iOS: `HTTPClientSpan`, `traced(channel:)`, `invokeTraced`, `span`, `bind`, `task`, `appContext` | O ponto único de rede (Alamofire), o registro dos canais, as telas nativas |
 | Redação, sessão, exportação | Padrões extras de redação para ids próprios |
 
 Nada é automático: só é rastreado o que passa por essas peças. Isso é
@@ -376,8 +376,8 @@ completa quando o span começa. As mesmas regras de `filter` e `enrich`.
 ### G. Canal nativo dentro do handler
 
 Troque `invokeMethod` por `invokeTraced` só nas chamadas dos fluxos
-escolhidos. No Swift, `startSpan(_:arguments:)` continua o trace. O
-argumento precisa ser um `Map`.
+escolhidos. O argumento precisa ser um `Map`. No Swift, registre o canal
+com `traced(channel:)` (seção 4.2), com o mesmo nome do canal no Dart.
 
 ### H. `bloc_concurrency` (`restartable`, `droppable`, `sequential`)
 
@@ -459,6 +459,24 @@ Flutter ─invokeTraced─► Swift traced(channel:) ─HTTPClientSpan─► bac
                                    │ (resposta roda no trace de quem pediu)
                                    └─invokeTraced─► Flutter setTracedMethodCallHandler
 ```
+
+### 4.0 Mapa das APIs
+
+Use as **recomendadas**. As **avançadas** existem para casos que as
+recomendadas não cobrem; elas fazem a mesma coisa com mais código e mais
+chance de erro.
+
+| Para | Recomendada | Avançada (evite) |
+|---|---|---|
+| Swift: handler chamado pelo Flutter | `traced(channel:) { call, result in }` | `startSpan(_:arguments:)` + `TraceContext.with` + `end` |
+| Swift: chamar o Flutter | `channel.invokeTraced(...)` | `invokeMethod(..., arguments: withTraceContext(...))` |
+| Swift: requisição HTTP | `HTTPClientSpan.start` → `call.finish { }` no ponto único; `TracedURLSession` | `start` + `finish` sem continuação |
+| Swift: span próprio no meio do código | `OtelFlutterBridge.shared.span("Area.acao")` | `tracer().spanBuilder(...)` (perde o pai depois de `await`) |
+| Swift: callback guardado / `Task` | `bind(callback)` / `task { }` | `TraceContext.with` manual |
+| Dart: handler chamado pelo nativo | `setTracedMethodCallHandler` | `runWithTraceContext` |
+| Dart: chamar o nativo | `invokeTraced` | `withTraceContext` |
+| Dart: evento de Bloc | `tracedHandler(nome, handler)` | span manual no handler |
+| Dart: método de Cubit | `OTel.tracer().startActiveSpanAsync(...)` (API do SDK) | — |
 
 ### 4.1 Início
 
@@ -667,6 +685,33 @@ GET /v1/saldo (Swift, raiz)                         app.screen=extrato
 Com cache: o span do servidor dura ~1 ms e não tem filhos. Correto: não
 houve trabalho.
 
+**Opcional: dar nome à operação.** Sem nome, o trace mostra canal → HTTP,
+o que já explica o fluxo. Para ler `Saldo.load` no trace (e ver o tempo do
+manager separado do HTTP), use `span(...)`:
+
+```swift
+func load() {
+  guard !isLoading else { return }
+  isLoading = true
+  let span = OtelFlutterBridge.shared.span("Saldo.load")   // pai: quem pediu, ou raiz (Timer)
+  TraceContext.with(span) {                                 // o HTTP vira filho de Saldo.load
+    api.request(Router.saldo) { response in
+      // ... o mesmo código de antes ...
+      span.end()
+    }
+  }
+}
+```
+
+```
+home.load (Dart)
+└─ app/native/getSaldo (client, Dart)
+   └─ app/native/getSaldo (server, Swift)             118 ms
+      └─ Saldo.load                                   112 ms
+         ├─ GET /v1/saldo                             110 ms
+         └─ app/native/saldoAtualizado (server, Dart)
+```
+
 ### 4.6 Onde o contexto não chega sozinho
 
 | Padrão | O que acontece | O que fazer |
@@ -677,10 +722,12 @@ houve trabalho.
 | SDKs de terceiros, push, CoreLocation, delegates de sistema | Trace novo | Correto na maioria das vezes; `bind` quando houver causa |
 | Timer | Trace novo | Correto: ninguém pediu |
 
-Para criar um span manual no meio do código (ex.: `Saldo.load`), use
-`OtelFlutterBridge.shared.tracer().spanBuilder(spanName:)` com
-`.setParent(TraceContext.current)` quando houver um corrente, e
-`TraceContext.with(span) { ... }` para torná-lo corrente.
+Span próprio no meio do código (ex.: `Saldo.load`): use
+`OtelFlutterBridge.shared.span("Saldo.load")`, que usa o span corrente
+como pai (inclusive dentro de `task { }` e de callbacks com `bind`), e
+`TraceContext.with(span) { ... }` para torná-lo corrente. Não use
+`tracer().spanBuilder(...)` direto: o pai padrão dele se perde depois de um
+`await`.
 
 ### 4.7 Telas nativas
 
@@ -752,6 +799,10 @@ próprios em `RedactionConfig.extraPatterns`. Prefira códigos fixos em
       `setTracedMethodCallHandler`.
 - [ ] iOS: `Task {` nos pontos de entrada dos fluxos virou
       `OtelFlutterBridge.shared.task {`; callbacks guardados usam `bind`.
+- [ ] iOS: spans próprios usam `OtelFlutterBridge.shared.span(...)`, não
+      `tracer().spanBuilder(...)`; todo span próprio tem `end()` em todos os
+      caminhos.
+- [ ] Nenhuma API avançada (seção 4.0) onde a recomendada serve.
 - [ ] O comportamento do handler não mudou (mesmos estados, mesmos erros).
 
 ## 8. Validação

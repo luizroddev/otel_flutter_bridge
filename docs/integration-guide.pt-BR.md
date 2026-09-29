@@ -112,11 +112,13 @@ Escolha **um** fluxo de ponta a ponta. Três pontos de contato bastam:
    await meuCanal.invokeTraced('metodo', arguments: {...});
    ```
 
-   No handler nativo correspondente:
+   No nativo, registre o canal (mesmo nome do Dart) com `traced`: cada
+   chamada continua o trace e termina quando o `result` é chamado.
 
    ```swift
-   let span = OtelFlutterBridge.shared.startSpan("Feature.metodo", arguments: call.arguments)
-   defer { span.end() }
+   canal.setMethodCallHandler(OtelFlutterBridge.shared.traced(channel: "meu/canal") { call, result in
+     // o handler de sempre
+   })
    ```
 
 3. **HTTP**: no Dart, com dio adicione `OtelDioInterceptor(propagateTo: {'host-da-sua-api'})`;

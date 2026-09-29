@@ -54,8 +54,8 @@ enum PocNativeChannel {
   /// Native work plus a native HTTP call, both children of the channel span.
   private static func loadCart(_ arguments: Any?, result: @escaping FlutterResult) {
     // Simulated local work, as its own child span (parent: the current span).
-    let work = OtelFlutterBridge.shared.tracer().spanBuilder(spanName: "NativeCart.readCache").startSpan()
-    work.setAttribute(key: "app.native.feature", value: "cart")
+    let work = OtelFlutterBridge.shared.span("NativeCart.readCache",
+                                             attributes: ["app.native.feature": .string("cart")])
     Thread.sleep(forTimeInterval: 0.03)
     work.end()
 

@@ -44,6 +44,38 @@ public enum TraceContext {
 }
 
 public extension OtelFlutterBridge {
+  /// Starts a span whose parent is the current span (`TraceContext.current`:
+  /// a traced channel handler, `task`, `bind`, an HTTP continuation), or a
+  /// new trace when there is none. Use it instead of
+  /// `tracer().spanBuilder(...)`, whose default parent is lost after `await`.
+  ///
+  /// The span is not made current: wrap the work in
+  /// `TraceContext.with(span) { ... }` so what it starts becomes its child,
+  /// and end it when the work ends.
+  ///
+  /// ```swift
+  /// let span = OtelFlutterBridge.shared.span("Saldo.load")
+  /// TraceContext.with(span) {
+  ///   api.request(Router.saldo) { response in
+  ///     ...
+  ///     span.end()
+  ///   }
+  /// }
+  /// ```
+  ///
+  /// `name` must be a fixed, low-cardinality string such as `Saldo.load`.
+  func span(_ name: String, kind: SpanKind = .internal,
+            attributes: [String: AttributeValue] = [:]) -> Span {
+    let builder = tracer().spanBuilder(spanName: name).setSpanKind(spanKind: kind)
+    if let parent = TraceContext.current {
+      builder.setParent(parent)
+    } else {
+      builder.setNoParent()
+    }
+    attributes.forEach { builder.setAttribute(key: $0.key, value: $0.value) }
+    return builder.startSpan()
+  }
+
   /// Returns `closure` bound to the current span: when it runs later (a
   /// stored completion, a queued callback), it runs with that span current,
   /// so what it does joins the trace of whoever created it.

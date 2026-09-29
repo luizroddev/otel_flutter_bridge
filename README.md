@@ -130,9 +130,9 @@ pull request.
 - Android: Dart telemetry works; the native Android bridge is planned (M7).
 - No offline buffer, retries or flush on background yet (M7). Data in memory
   is lost if the app is killed.
-- Channel propagation is manual per call (`invokeTraced` Dart → native,
-  `withTraceContext` / `runWithTraceContext` native → Dart); generic
-  propagation is M7.
+- Channel propagation is explicit: `invokeTraced` on the calling side and
+  `traced(channel:)` (Swift) / `setTracedMethodCallHandler` (Dart) on the
+  receiving side; generic propagation is M7.
 - Native crash capture is out of scope; keep your crash reporter.
 - Traces only. Metrics and logs are out of scope for now.
 

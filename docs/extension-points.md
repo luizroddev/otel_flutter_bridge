@@ -18,8 +18,8 @@ the library without forking it.
 | `TelemetryPipeline.records` | `OtelFlutterBridge.pipeline` | Observe what was sent, after redaction |
 | `TelemetryInspectorPage` / `View` | `package:otel_flutter_bridge/inspector.dart` | On-screen inspector for debug menus |
 | `OtelDioInterceptor(filter:, enrich:, propagateTo:)` | dio package | Skip requests, add attributes, limit `traceparent` to own hosts |
-| `invokeTraced` / `withTraceContext` | any `MethodChannel` | Continue the trace in native code (carries screen and flow) |
-| `setTracedMethodCallHandler` / `runWithTraceContext(arguments, fn)` | a Dart channel handler native code calls | Continue a native trace in Dart (server span `channel/method`) |
+| `invokeTraced` (`withTraceContext` is the advanced form) | any `MethodChannel` | Continue the trace in native code (carries screen and flow) |
+| `setTracedMethodCallHandler` (`runWithTraceContext` is the advanced form) | a Dart channel handler native code calls | Continue a native trace in Dart (server span `channel/method`) |
 | `OtelHttpClient(inner, filter:, enrich:, propagateTo:)` | the app's `http.Client` | Same as the dio interceptor, for `package:http` |
 | `tracedHandler(name, handler, nameOf:, enrich:, errorType:)` | Bloc `on<E>` or any two-argument callback | One span per handled event; children follow |
 
@@ -31,7 +31,8 @@ the library without forking it.
 | `makeSpanProcessor()` + `makeAppContextProcessor()` | Add the bridge to a provider the app already has (`registerGlobal: false`) |
 | `traced(channel:_:)` | Wrap a channel handler: continues the Dart trace, current while it runs, ends on `result` |
 | `FlutterMethodChannel.invokeTraced` | Call Dart in the current trace (Dart: `setTracedMethodCallHandler`) |
-| `startSpan(_:arguments:)` / `extractContext(from:)` / `withTraceContext(_:span:)` | Manual control of the same |
+| `span(_:kind:attributes:)` | A span of your own whose parent is the current span (survives `await`) |
+| `startSpan(_:arguments:)` / `extractContext(from:)` / `withTraceContext(_:span:)` | Advanced: manual control of the channel helpers |
 | `HTTPClientSpan.start` → `call.finish(response:error:) { }` and `propagateTo` | One client span per request for any HTTP stack; the continuation runs in the requester's trace |
 | `bind(closure)` / `task { }` / `TraceContext.with` / `.current` | Carry the current span through stored callbacks and `async` code |
 | `appContext.screen` / `.flow` | Stamp `app.screen` / `app.flow` on native spans at start |

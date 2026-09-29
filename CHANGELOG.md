@@ -29,6 +29,12 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
   as OpenTelemetry's thread-bound context, so it survives `await`;
   `bind(closure)` and `task { }` carry it through stored callbacks and
   async code.
+- iOS: `OtelFlutterBridge.shared.span(_:)` starts a span whose parent is
+  `TraceContext.current`, so manual spans stay in the trace inside `task { }`
+  and bound callbacks (`tracer().spanBuilder` loses its parent after
+  `await`).
+- Docs: API map (recommended vs advanced) in the app guide; guides use the
+  recommended APIs only.
 - Dart: `MethodChannel.setTracedMethodCallHandler` continues native traces
   with a server span per call.
 - Example app: channel handler with `traced`, scenario 9 (native → Flutter
