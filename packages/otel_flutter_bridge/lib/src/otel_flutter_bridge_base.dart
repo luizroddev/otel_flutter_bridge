@@ -13,6 +13,7 @@ import 'native_bridge.dart';
 import 'pipeline.dart';
 import 'redaction.dart';
 import 'session.dart';
+import 'span_errors.dart';
 import 'transport.dart';
 
 /// Entry point. Configures the OpenTelemetry Dart SDK and connects the
@@ -36,6 +37,12 @@ abstract final class OtelFlutterBridge {
   ///
   /// Never throws: on failure the bridge stays disabled, the app keeps
   /// running and [onDiagnostic] receives `initFailed`.
+  ///
+  /// Exceptions recorded by the SDK (`withSpanAsync`,
+  /// `startActiveSpanAsync`) keep only their type: the message and stack
+  /// trace are free text and may carry personal data. Outside debug mode the
+  /// SDK's console log (`OTelLog`) is turned off for the same reason; it
+  /// prints exception text. Use [onDiagnostic] for internal problems.
   ///
   /// Extension points:
   /// - [transport] replaces the default OTLP/HTTP sender.
@@ -110,7 +117,11 @@ abstract final class OtelFlutterBridge {
         enableMetrics: false,
         enableLogs: false,
         detectPlatformResources: false,
+        spanExceptionOptions: const SpanExceptionOptions(
+          exceptionSanitizer: sanitizeSpanException,
+        ),
       );
+      if (!kDebugMode) OTelLog.logFunction = null;
       for (final p in spanProcessors) {
         OTel.tracerProvider().addSpanProcessor(p);
       }

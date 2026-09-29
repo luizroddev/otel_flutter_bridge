@@ -193,10 +193,43 @@ void main() {
     expect(caught, isA<StateError>());
     expect(caughtStack.toString(), original.toString());
     expect(printed.join('\n'), isNot(contains('ana@example.com')));
-    expect(
-      named('x.fails').status.code,
-      pb.Status_StatusCode.STATUS_CODE_ERROR,
+    final exported = transport.requests.map((r) => r.toString()).join();
+    expect(exported, isNot(contains('ana')));
+    final span = named('x.fails');
+    expect(span.status.code, pb.Status_StatusCode.STATUS_CODE_ERROR);
+    expect(span.status.message, 'StateError');
+  });
+
+  test('errorType names the error for obfuscated builds', () async {
+    await init();
+    final handler = tracedHandler<String, int>(
+      'x.typed',
+      (a, b) => throw const OrdersFailure(),
+      errorType: (e) => e is OrdersFailure ? 'orders_failure' : 'other',
     );
+    await expectLater(handler('a', 1), throwsA(isA<OrdersFailure>()));
+    await OtelFlutterBridge.flush();
+    final attrs = {
+      for (final a in named('x.typed').attributes) a.key: a.value.stringValue,
+    };
+    expect(attrs, containsPair('error.type', 'orders_failure'));
+  });
+
+  test('SDK-recorded exceptions keep only the type', () async {
+    await init();
+    await expectLater(
+      OTel.tracer().startActiveSpanAsync<void>(
+        name: 'cubit.load',
+        fn: (_) async => throw StateError('customer ana@example.com'),
+      ),
+      throwsA(isA<StateError>()),
+    );
+    await OtelFlutterBridge.flush();
+    final exported = transport.requests.map((r) => r.toString()).join();
+    expect(exported, isNot(contains('ana')));
+    final span = named('cubit.load');
+    expect(span.status.code, pb.Status_StatusCode.STATUS_CODE_ERROR);
+    expect(span.status.message, 'StateError');
   });
 
   test('a handled error can still mark the active span', () async {

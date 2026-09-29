@@ -186,7 +186,21 @@ on<LoadOrders>(tracedHandler(
 - O evento nunca é lido. Em `enrich`, use só enums, booleanos e contagens
   pequenas com chaves `app.*`. Nunca ids, textos, e-mails, valores.
 - Se o handler lança, o span fica com erro e `error.type`, e o mesmo erro
-  segue para o `onError` do Bloc. Nada muda no comportamento.
+  segue para o `onError` do Bloc, com a mesma stack. Nada muda no
+  comportamento. O texto da exceção nunca é exportado nem impresso.
+- Em build com `--obfuscate`, nomes de tipo saem ofuscados. Para as exceções
+  do app, informe nomes fixos:
+
+  ```dart
+  on<LoadOrders>(tracedHandler(
+    SpanNames.ordersLoad,
+    _onLoadOrders,
+    errorType: (e) => switch (e) {
+      OrdersException() => 'orders_exception',
+      _ => 'other',
+    },
+  ));
+  ```
 
 ### B. Erro tratado dentro do handler
 
@@ -205,7 +219,8 @@ OK (os spans HTTP filhos mostram o status). Para marcar o span do handler:
 ### C. Cubit: span no método
 
 Métodos de Cubit são chamados direto da UI, então o contexto é preservado.
-Use a API padrão do SDK, sem helper:
+Use a API padrão do SDK, sem helper. A biblioteca configura o SDK para que
+exceções registradas assim guardem só o tipo, sem mensagem:
 
 ```dart
 Future<void> load() => OTel.tracer().startActiveSpanAsync(

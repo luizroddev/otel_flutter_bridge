@@ -139,6 +139,37 @@ void main() {
     expect(http.parentSpanId, root.spanId);
   });
 
+  test('non-standard methods become _OTHER with span name HTTP', () async {
+    final client = OtelHttpClient(fake(200, []));
+    await client.send(http.Request('PURGE', Uri.parse('https://a.com/x')));
+    await OtelFlutterBridge.flush();
+    final span = transport.spans.single;
+    expect(span.name, 'HTTP');
+    expect(_attrs(span), containsPair('http.request.method', '_OTHER'));
+  });
+
+  test('unmodifiable headers: request sent and still traced', () async {
+    final seen = <http.BaseRequest>[];
+    final client = OtelHttpClient(fake(200, seen));
+    final res = await client.send(_FixedHeadersRequest());
+    expect(res.statusCode, 200);
+    await OtelFlutterBridge.flush();
+    expect(transport.spans.single.name, 'GET');
+  });
+
+  test('transport error text is never exported', () async {
+    final client = OtelHttpClient(
+      MockClient((_) async => throw http.ClientException('ana@example.com')),
+    );
+    await expectLater(
+      client.get(Uri.parse('https://a.com/x')),
+      throwsA(isA<http.ClientException>()),
+    );
+    await OtelFlutterBridge.flush();
+    final exported = transport.requests.map((r) => r.toString()).join();
+    expect(exported, isNot(contains('ana')));
+  });
+
   test('inside RetryClient: one span per attempt', () async {
     var calls = 0;
     final inner = MockClient((_) async {
@@ -157,6 +188,14 @@ void main() {
         transport.spans.map((s) => _attrs(s)['http.response.status_code']);
     expect(statuses, [503, 200]);
   });
+}
+
+/// A request whose headers cannot be changed.
+class _FixedHeadersRequest extends http.BaseRequest {
+  _FixedHeadersRequest() : super('GET', Uri.parse('https://a.com/x'));
+
+  @override
+  Map<String, String> get headers => const {};
 }
 
 Map<String, Object?> _attrs(pb.Span span) => {

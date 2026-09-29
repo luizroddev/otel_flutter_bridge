@@ -74,10 +74,10 @@ class OtelDioInterceptor extends Interceptor {
 
   void _start(RequestOptions options) {
     final uri = options.uri;
-    final method = options.method.toUpperCase();
+    final method = OtelHttpClient.httpMethodOf(options.method);
     final tracer = _tracer ?? OTel.tracer();
     final span = tracer.startSpan(
-      method,
+      method == '_OTHER' ? 'HTTP' : method,
       kind: SpanKind.client,
       attributes: OTel.attributesFromMap({
         'http.request.method': method,

@@ -2,6 +2,8 @@ import 'dart:async';
 
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 
+import 'span_errors.dart';
+
 /// Adds attributes to a [tracedHandler] span from the handler's first
 /// argument (for a Bloc, the event). Keys must be allowed by the redaction
 /// config (for example `app.*`), or they are dropped before export.
@@ -27,14 +29,17 @@ typedef TracedHandlerEnricher<A> = void Function(Span span, A first);
 /// The arguments are never read or recorded. Use [enrich] to add safe,
 /// low-cardinality values from the first argument (enums, booleans).
 ///
-/// When [handler] throws, the span records the exception and gets
-/// `error.type`, and the same error is rethrown, so the caller (for a Bloc,
-/// `onError`) sees exactly what it would without tracing. When telemetry is
+/// When [handler] throws, the span gets error status and `error.type`
+/// (from [errorType], or a fixed name for common types, or `runtimeType`),
+/// never the error text. The same error is rethrown with its stack trace,
+/// so the caller (for a Bloc, `onError`) sees exactly what it would without
+/// tracing. When telemetry is
 /// not initialized, [handler] runs untraced.
 Future<void> Function(A, B) tracedHandler<A, B>(
   String name,
   FutureOr<void> Function(A, B) handler, {
   TracedHandlerEnricher<A>? enrich,
+  String Function(Object error)? errorType,
   Tracer? tracer,
 }) {
   return (a, b) async {
@@ -81,22 +86,24 @@ Future<void> Function(A, B) tracedHandler<A, B>(
       }
     }
     final e = error;
-    if (e != null) _markError(span, e, stackTrace!);
+    if (e != null) _markError(span, e, errorType);
     _end(span);
     if (e != null) Error.throwWithStackTrace(e, stackTrace!);
   };
 }
 
-void _markError(Span span, Object error, StackTrace stackTrace) {
+void _markError(
+  Span span,
+  Object error,
+  String Function(Object error)? errorType,
+) {
+  String? type;
   try {
-    final type = error.runtimeType.toString();
-    span
-      ..recordException(error, stackTrace: stackTrace)
-      ..setStringAttribute('error.type', type)
-      ..setStatus(SpanStatusCode.Error, type);
+    type = errorType?.call(error);
   } catch (_) {
     // Telemetry never breaks the app.
   }
+  markSpanError(span, error, type: type);
 }
 
 void _end(Span span) {

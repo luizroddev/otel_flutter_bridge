@@ -1,6 +1,7 @@
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 import 'package:http/http.dart' as http;
 
+import 'span_errors.dart';
 import 'traceparent.dart';
 
 /// Decides whether a request is traced. Extension point.
@@ -82,12 +83,31 @@ class OtelHttpClient extends http.BaseClient {
   @override
   void close() => _inner.close();
 
+  /// The HTTP semantic conventions method: one of the known methods, or
+  /// `_OTHER`, so custom methods do not create unbounded span names.
+  static String httpMethodOf(String method) {
+    final m = method.toUpperCase();
+    return _knownMethods.contains(m) ? m : '_OTHER';
+  }
+
+  static const _knownMethods = {
+    'CONNECT',
+    'DELETE',
+    'GET',
+    'HEAD',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+    'TRACE',
+  };
+
   Span _start(http.BaseRequest request) {
     final uri = request.url;
-    final method = request.method.toUpperCase();
+    final method = httpMethodOf(request.method);
     final tracer = _tracer ?? OTel.tracer();
     final span = tracer.startSpan(
-      method,
+      method == '_OTHER' ? 'HTTP' : method,
       kind: SpanKind.client,
       attributes: OTel.attributesFromMap({
         'http.request.method': method,
@@ -97,9 +117,13 @@ class OtelHttpClient extends http.BaseClient {
         'url.path': uri.path.isEmpty ? '/' : uri.path,
       }),
     );
-    if (propagateTo.isEmpty || propagateTo.contains(uri.host)) {
-      final value = Traceparent.format(span.spanContext);
-      if (value != null) request.headers[Traceparent.header] = value;
+    try {
+      if (propagateTo.isEmpty || propagateTo.contains(uri.host)) {
+        final value = Traceparent.format(span.spanContext);
+        if (value != null) request.headers[Traceparent.header] = value;
+      }
+    } catch (_) {
+      // Headers may be unmodifiable in a custom request: trace anyway.
     }
     return span;
   }
@@ -116,10 +140,7 @@ class OtelHttpClient extends http.BaseClient {
         span.setIntAttribute('http.response.status_code', status);
       }
       if (error != null) {
-        final type = error.runtimeType.toString();
-        span
-          ..setStringAttribute('error.type', type)
-          ..setStatus(SpanStatusCode.Error, type);
+        markSpanError(span, error);
       } else if (status != null && status >= 400) {
         span
           ..setStringAttribute('error.type', status.toString())
