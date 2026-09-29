@@ -18,7 +18,8 @@ the library without forking it.
 | `TelemetryPipeline.records` | `OtelFlutterBridge.pipeline` | Observe what was sent, after redaction |
 | `TelemetryInspectorPage` / `View` | `package:otel_flutter_bridge/inspector.dart` | On-screen inspector for debug menus |
 | `OtelDioInterceptor(filter:, enrich:, propagateTo:)` | dio package | Skip requests, add attributes, limit `traceparent` to own hosts |
-| `invokeTraced` / `withTraceContext` | any `MethodChannel` | Continue the trace in native code |
+| `invokeTraced` / `withTraceContext` | any `MethodChannel` | Continue the trace in native code (carries screen and flow) |
+| `runWithTraceContext(arguments, fn)` | a Dart channel handler native code calls | Continue a native trace in Dart |
 | `OtelHttpClient(inner, filter:, enrich:, propagateTo:)` | the app's `http.Client` | Same as the dio interceptor, for `package:http` |
 | `tracedHandler(name, handler, nameOf:, enrich:, errorType:)` | Bloc `on<E>` or any two-argument callback | One span per handled event; children follow |
 
@@ -27,9 +28,12 @@ the library without forking it.
 | Seam | Use it to |
 |---|---|
 | `OtelFlutterBridge.shared.start(resourceAttributes:extraProcessors:sampler:registerGlobal:)` | Configure the native provider |
-| `makeSpanProcessor()` | Add the bridge to a provider the app already has (`registerGlobal: false`) |
-| `startSpan(_:arguments:)` / `extractContext(from:)` | Continue a Dart trace in a channel handler |
-| `TracedURLSession.data(for:)` / `dataTask(with:)` and `propagateTo` | Explicit native HTTP tracing |
+| `makeSpanProcessor()` + `makeAppContextProcessor()` | Add the bridge to a provider the app already has (`registerGlobal: false`) |
+| `startSpan(_:arguments:)` / `extractContext(from:)` | Continue a Dart trace in a channel handler (with Dart's screen and flow) |
+| `withTraceContext(_:span:)` | Call Dart with the native trace context; Dart continues with `runWithTraceContext` |
+| `appContext.screen` / `.flow` | Stamp `app.screen` / `app.flow` on native spans at start |
+| `HTTPClientSpan.start` / `finish` and `propagateTo` | One client span per request for any HTTP stack (Alamofire, the app's API client) |
+| `TracedURLSession.data(for:)` / `dataTask(with:)` | The same, for plain `URLSession` calls |
 | `PendingSpanQueue` | Tune capacity or inspect `droppedCount` |
 
 ## Rule for any extension

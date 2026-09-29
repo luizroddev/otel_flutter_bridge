@@ -122,8 +122,10 @@ Escolha **um** fluxo de ponta a ponta. Três pontos de contato bastam:
 3. **HTTP**: no Dart, com dio adicione `OtelDioInterceptor(propagateTo: {'host-da-sua-api'})`;
    com `package:http`, envolva o client do app em
    `OtelHttpClient(http.Client(), propagateTo: {'host-da-sua-api'})`.
-   No nativo, troque a chamada do `URLSession` desse fluxo por
-   `TracedURLSession.dataTask(with:parent: span.context)`.
+   No nativo, com `URLSession` direto use
+   `TracedURLSession.dataTask(with:parent: span.context)`; com Alamofire ou
+   um client próprio, use `HTTPClientSpan.start` / `finish` no ponto único
+   de rede (veja o guia de instrumentação do app, seção 4).
 
 Para apps com Bloc ou Cubit, e para decidir onde encaixar cada peça, siga o
 [guia de instrumentação do app](app-instrumentation-guide.pt-BR.md).

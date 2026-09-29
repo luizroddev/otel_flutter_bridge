@@ -1,3 +1,6 @@
+import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
+import 'package:dartastic_opentelemetry/proto/opentelemetry_proto_dart.dart'
+    as pb;
 import 'package:flutter/services.dart';
 
 import 'diagnostics.dart';
@@ -11,11 +14,22 @@ import 'semantics.dart';
 /// ready, so spans created before that are queued natively, not lost.
 class NativeBridge {
   /// Creates the bridge. [channel] exists for tests.
-  NativeBridge(this._pipeline, {MethodChannel? channel, this.onDiagnostic})
-      : _channel = channel ?? const MethodChannel(bridgeChannelName);
+  ///
+  /// [sampleRatio] is applied to native spans by trace id, with the same
+  /// sampler as Dart spans. A trace sampled in Dart keeps its native spans;
+  /// a trace that starts in native code is kept or dropped at the same
+  /// rate as one that starts in Dart.
+  NativeBridge(
+    this._pipeline, {
+    MethodChannel? channel,
+    this.onDiagnostic,
+    double sampleRatio = 1.0,
+  })  : _channel = channel ?? const MethodChannel(bridgeChannelName),
+        _sampler = sampleRatio >= 1.0 ? null : TraceIdRatioSampler(sampleRatio);
 
   final TelemetryPipeline _pipeline;
   final MethodChannel _channel;
+  final TraceIdRatioSampler? _sampler;
 
   /// Receives rejected batches.
   final DiagnosticListener? onDiagnostic;
@@ -54,6 +68,27 @@ class NativeBridge {
   /// Stops listening.
   void disconnect() => _channel.setMethodCallHandler(null);
 
+  void _sample(pb.ResourceSpans resourceSpans) {
+    final sampler = _sampler;
+    if (sampler == null) return;
+    for (final ss in resourceSpans.scopeSpans) {
+      ss.spans.retainWhere((span) {
+        final result = sampler.shouldSample(
+          parentContext: Context.root,
+          traceId: _hex(span.traceId),
+          name: span.name,
+          spanKind: SpanKind.internal,
+          attributes: null,
+          links: null,
+        );
+        return result.decision == SamplingDecision.recordAndSample;
+      });
+    }
+  }
+
+  static String _hex(List<int> bytes) =>
+      bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+
   Future<Object?> _handle(MethodCall call) async {
     if (call.method != 'exportSpans') return null;
     try {
@@ -66,8 +101,10 @@ class NativeBridge {
           ),
         );
       }
-      if (batch.resourceSpans != null) {
-        _pipeline.submitNative(batch.resourceSpans!);
+      final resourceSpans = batch.resourceSpans;
+      if (resourceSpans != null) {
+        _sample(resourceSpans);
+        _pipeline.submitNative(resourceSpans);
       }
       return {'accepted': batch.accepted, 'rejected': batch.rejected};
     } catch (e) {

@@ -16,6 +16,7 @@ Pré-requisito: a biblioteca já inicializada (passos 1 a 3 do
 | `tracedHandler` para handlers de Bloc | Quais handlers rastrear e o nome de cada span |
 | `invokeTraced` para canais | Atributos `app.*` (`enrich`, `enrichers`) |
 | `AppContext` (tela e fluxo carimbados no início de cada span) | Quando atualizar a tela e o fluxo (navegação) |
+| iOS: `HTTPClientSpan`, `startSpan`, `withTraceContext`, `appContext` | O ponto único de rede (Alamofire), as telas nativas |
 | Redação, sessão, exportação | Padrões extras de redação para ids próprios |
 
 Nada é automático: só é rastreado o que passa por essas peças. Isso é
@@ -46,7 +47,7 @@ Anote:
 - **Chamadas diretas** `http.get(...)`: precisam virar chamadas no client
   injetado. É o principal trabalho de refatoração.
 - **Wrappers próprios** (auth, headers, refresh de token, retry): definem a
-  ordem de composição (seção 3, casos C e D).
+  ordem de composição (seção 3, caso D; no iOS, seção 4).
 - **Hosts**: quais são da empresa (recebem `traceparent`) e quais são de
   terceiros (analytics, CDN, mapas, pagamentos externos).
 
@@ -72,8 +73,23 @@ Anote:
 ```bash
 grep -rnE "MethodChannel\(|invokeMethod" lib
 ```
-No host iOS: procure os `FlutterMethodChannel` e os `URLSession` usados por
-esses handlers.
+
+No host iOS (rode na pasta do projeto Xcode):
+
+```bash
+# Handlers que o Flutter chama, e chamadas do nativo para o Flutter
+grep -rnE "FlutterMethodChannel|setMethodCallHandler|invokeMethod\(" --include=*.swift .
+# Rede: o ponto único do Alamofire e usos diretos
+grep -rnE "SessionManager|Alamofire\.request|\.request\(|URLSession\.shared|dataTask\(" --include=*.swift .
+# Adapter e retrier já existentes (a ordem importa)
+grep -rnE "RequestAdapter|RequestRetrier" --include=*.swift .
+# Telas nativas: onde fica o viewDidAppear comum (base class, coordinator)
+grep -rnE "class .*: UIViewController|viewDidAppear" --include=*.swift . | head -50
+```
+
+Anote: o **ponto único de rede** (a classe que chama `SessionManager`), as
+telas nativas dos fluxos escolhidos e se o nativo chama o Flutter (push,
+deep link, eventos de SDK).
 
 ### 1.4 Riscos de privacidade
 
@@ -427,7 +443,147 @@ Tarefas periódicas: rastreie a operação explícita, não cada tick.
 Continuam rastreadas (útil para ver latência), mas sem `traceparent` quando
 `propagateTo` lista só os hosts próprios. Para não rastrear, use `filter`.
 
-## 4. O que não fazer
+## 4. Lado iOS (host nativo)
+
+O trace de ponta a ponta atravessa o canal nos dois sentidos. As mesmas
+regras do Dart valem no Swift: só é rastreado o que passa pelas peças da
+biblioteca (sem swizzling), a redação acontece no Dart, e tela e fluxo são
+carimbados no início de cada span.
+
+```
+Flutter (handler) ─invokeTraced─► Swift (startSpan) ─HTTPClientSpan─► backend
+Swift (tela nativa) ─withTraceContext─► Flutter (runWithTraceContext) ─► ...
+```
+
+### 4.1 Início
+
+No `didFinishLaunching`, antes do engine (que no seu app sobe no launch):
+
+```swift
+OtelFlutterBridge.shared.start(resourceAttributes: [
+  "os.name": .string("iOS"),
+  "os.version": .string(UIDevice.current.systemVersion),
+])
+HTTPClientSpan.propagateTo = ["api.meuapp.com"]  // traceparent só para a sua API
+```
+
+Spans nativos criados antes do Dart ficar pronto esperam numa fila (512, os
+mais antigos saem primeiro) e entram na mesma sessão. A amostragem
+(`sampleRatio`) é aplicada a eles no Dart, com a mesma regra dos traces
+Dart.
+
+### 4.2 HTTP com Alamofire 4: no ponto único de rede
+
+Instrumente **a classe que chama o `SessionManager`**, não o Alamofire. A
+biblioteca não depende do Alamofire (a 4.8 está sem manutenção desde 2020;
+uma dependência nela travaria o app e a biblioteca), e o helper funciona
+igual se vocês migrarem para a 5.
+
+```swift
+final class APIClient {
+  private let session: SessionManager
+
+  func request(_ convertible: URLRequestConvertible,
+               completion: @escaping (DataResponse<Data>) -> Void) {
+    guard let urlRequest = try? convertible.asURLRequest() else {
+      session.request(convertible).validate().responseData(completionHandler: completion)
+      return
+    }
+    let (span, traced) = HTTPClientSpan.start(urlRequest)
+    session.request(traced).validate().responseData { response in
+      HTTPClientSpan.finish(span, response: response.response, error: response.error)
+      completion(response)
+    }
+  }
+}
+```
+
+- **Pai**: sem `parent:`, o span HTTP é filho do **span ativo**. Dentro de um
+  handler de canal, ative o span do handler enquanto monta a requisição
+  (4.4). Se o `APIClient` já recebe contexto, passe `parent:` explícito.
+- **`validate()`**: com 4xx/5xx, `error.type` é o status (`404`), não
+  `AFError`.
+- **Retry** (`RequestRetrier`): o Alamofire 4 reenvia a mesma requisição,
+  então as tentativas ficam no mesmo span e com o mesmo `traceparent`. Se
+  precisar de um span por tentativa, instrumente no `RequestAdapter`, com o
+  custo de mapear a tarefa ao span: não recomendado agora.
+- **Cancelamento**: `finish` é chamado com o erro de cancelamento
+  (`error.type = URLError`). Garanta que todo `start` tem um `finish`,
+  inclusive nos caminhos de erro do seu client.
+- `URLSession` direto: `TracedURLSession.dataTask(with:parent:)` faz o
+  mesmo.
+
+### 4.3 Telas nativas
+
+No `viewDidAppear` da base class (ou no coordinator), com nomes fixos:
+
+```swift
+class BaseViewController: UIViewController {
+  /// Nome fixo da tela para a telemetria, ex.: "Statement.list".
+  var telemetryScreen: String? { nil }
+
+  override func viewDidAppear(_ animated: Bool) {
+    super.viewDidAppear(animated)
+    if let name = telemetryScreen { OtelFlutterBridge.shared.appContext.screen = name }
+  }
+}
+```
+
+Fluxo: `OtelFlutterBridge.shared.appContext.flow = "statement"` ao começar
+a jornada, `nil` ao terminar. Telas Flutter são definidas no Dart
+(`AppContext`); spans nativos filhos de um handler Dart recebem a tela e o
+fluxo do Dart pelo canal, então um trace nunca mistura telas.
+
+### 4.4 Handler nativo chamado pelo Flutter
+
+```swift
+channel.setMethodCallHandler { call, result in
+  let span = OtelFlutterBridge.shared.startSpan("Statement.load", arguments: call.arguments)
+  OpenTelemetry.instance.contextProvider.withActiveSpan(span) {
+    apiClient.request(StatementRouter.list) { response in   // span HTTP vira filho
+      span.end()
+      result(...)
+    }
+  }
+}
+```
+
+`withActiveSpan` cobre só o trecho síncrono que **cria** a requisição, que é
+o que o `HTTPClientSpan.start` precisa. Termine o span no callback.
+
+### 4.5 Nativo chamando o Flutter
+
+Quando o nativo aciona o Flutter (push, deep link, resultado de um SDK
+nativo), passe o contexto:
+
+```swift
+let span = OtelFlutterBridge.shared.tracer().spanBuilder(spanName: "Push.received").startSpan()
+channel.invokeMethod("openStatement",
+                     arguments: OtelFlutterBridge.shared.withTraceContext(["month": 5], span: span))
+span.end()
+```
+
+No Dart, continue o trace no handler:
+
+```dart
+channel.setMethodCallHandler((call) => runWithTraceContext(call.arguments, () async {
+  // Spans criados aqui são filhos do span nativo, com a tela dele.
+  ...
+}));
+```
+
+Se o handler Dart só faz `bloc.add(...)`, o contexto não chega ao handler
+do Bloc (ele roda na zona em que o Bloc foi criado): use o padrão de link
+do caso J, capturando o contexto no `add`.
+
+### 4.6 Erros no nativo
+
+`exception.message` e a mensagem de status são exportados (com a redação
+padrão). Escreva mensagens sem dados pessoais e cadastre os identificadores
+próprios em `RedactionConfig.extraPatterns`. Prefira códigos fixos em
+`error.type`.
+
+## 5. O que não fazer
 
 - Nome de span com `runtimeType`, `toString()` ou interpolação de ids.
 - `enrich` lendo campos livres do evento, do estado ou da resposta.
@@ -438,16 +594,16 @@ Continuam rastreadas (útil para ver latência), mas sem `traceparent` quando
 - Passar o `OtelHttpClient` como transporte da própria telemetria.
 - Liberar chaves novas na redação sem revisão (`allowedAttributes`).
 
-## 5. Ordem de entrega
+## 6. Ordem de entrega
 
 1. Revisão (seção 1) preenchida e revisada por alguém do time.
 2. Client único no composition root, com `OtelHttpClient` ou o interceptor
    do dio. Só isso já gera spans HTTP com `session.id`.
 3. `tracedHandler` nos handlers do primeiro fluxo.
 4. `invokeTraced` + lado nativo, se o fluxo passa pelo nativo.
-5. Validação (seção 7). Depois, expandir fluxo a fluxo.
+5. Validação (seção 8). Depois, expandir fluxo a fluxo.
 
-## 6. Checklist de code review da instrumentação
+## 7. Checklist de code review da instrumentação
 
 - [ ] Nomes de span vêm de `SpanNames` e seguem `{area}.{acao}`.
 - [ ] Nenhum `enrich` lê texto livre, id, e-mail, valor ou documento.
@@ -461,9 +617,15 @@ Continuam rastreadas (útil para ver latência), mas sem `traceparent` quando
       mudar o `transformer`).
 - [ ] Tela e fluxo vêm de `AppContext`, com nomes de rota fixos; nenhum
       `enricher` lê a tela atual.
+- [ ] iOS: todo `HTTPClientSpan.start` tem `finish` em todos os caminhos
+      (sucesso, erro, cancelamento); nenhuma requisição dos fluxos sai do
+      `SessionManager` sem passar pelo ponto único.
+- [ ] iOS: handlers nativos usam `startSpan(_:arguments:)`; chamadas do
+      nativo para o Flutter usam `withTraceContext`, e o Dart
+      `runWithTraceContext`.
 - [ ] O comportamento do handler não mudou (mesmos estados, mesmos erros).
 
-## 7. Validação
+## 8. Validação
 
 - **Inspetor** (`TelemetryInspectorPage`): o fluxo aparece como árvore
   `handler → HTTP`, com o contador de atributos removidos.

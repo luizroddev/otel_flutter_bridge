@@ -1,6 +1,28 @@
+import 'dart:async';
+
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 
 import 'semantics.dart';
+
+/// Screen and flow values of one span.
+typedef AppContextValues = ({String? screen, String? flow});
+
+// What each started span was stamped with, so children (Dart, and native
+// through the channel) can copy it. The SDK puts this same span object in
+// the context of its children.
+final _stamped = Expando<AppContextValues>();
+
+// Zone key for values that came from native code with a remote parent.
+const _remoteValuesKey = #otelFlutterBridgeRemoteAppContext;
+
+/// The values [span] was stamped with, or null. Library use.
+AppContextValues? appContextOf(Object? span) =>
+    span == null ? null : _stamped[span];
+
+/// Runs [fn] so spans started in it without a local parent take [values]
+/// instead of the current [AppContext]. Library use.
+R runWithRemoteAppContext<R>(AppContextValues values, R Function() fn) =>
+    runZoned(fn, zoneValues: {_remoteValuesKey: values});
 
 /// Where the user is in the app: the current screen and flow. Stamped on
 /// every Dart span **when it starts**, as [appScreenKey] and [appFlowKey].
@@ -11,8 +33,8 @@ import 'semantics.dart';
 ///
 /// A span with a local parent copies the parent's values instead, so every
 /// span of one trace carries the same screen and flow even if the user
-/// navigates while it runs. Native spans are not stamped; they are found
-/// through their Dart parent.
+/// navigates while it runs. The values also travel to native code with
+/// `invokeTraced`, so native children carry them too.
 abstract final class AppContext {
   /// The current screen, or null.
   static String? screen;
@@ -30,15 +52,12 @@ abstract final class AppContext {
 /// Stamps [AppContext] on spans at start. Installed by
 /// `OtelFlutterBridge.initialize`.
 class AppContextSpanProcessor implements SpanProcessor {
-  // What each started span was stamped with, so children can copy it.
-  // The SDK puts this same span object in the context of its children.
-  final _stamped = Expando<({String? screen, String? flow})>();
-
   @override
   Future<void> onStart(Span span, Context? parentContext) async {
     try {
       final parent = parentContext?.span;
       final values = (parent == null ? null : _stamped[parent]) ??
+          Zone.current[_remoteValuesKey] as AppContextValues? ??
           (screen: AppContext.screen, flow: AppContext.flow);
       _stamped[span] = values;
       final screen = values.screen;

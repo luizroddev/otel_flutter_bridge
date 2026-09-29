@@ -132,7 +132,11 @@ abstract final class OtelFlutterBridge {
       _session = session;
 
       if (connectNative) {
-        _native = NativeBridge(pipeline, onDiagnostic: onDiagnostic);
+        _native = NativeBridge(
+          pipeline,
+          onDiagnostic: onDiagnostic,
+          sampleRatio: config.sampleRatio,
+        );
         await _native!.connect(
           enabled: config.enabled,
           maxBatchSize: config.limits.maxNativeBatchSize,

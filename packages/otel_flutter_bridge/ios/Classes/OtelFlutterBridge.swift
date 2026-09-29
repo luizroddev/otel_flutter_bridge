@@ -13,6 +13,11 @@ public final class OtelFlutterBridge: @unchecked Sendable {
   /// Native spans waiting for, or flowing to, Dart.
   public let queue = PendingSpanQueue()
 
+  /// Current screen and flow of the host app, stamped on native spans when
+  /// they start (`app.screen`, `app.flow`). Set `appContext.screen` when a
+  /// native screen appears; Flutter screens are set from Dart.
+  public let appContext = AppContextStore()
+
   public private(set) var tracerProvider: TracerProviderSdk?
   public private(set) var isStarted = false
 
@@ -38,6 +43,7 @@ public final class OtelFlutterBridge: @unchecked Sendable {
     if let tracerProvider { return tracerProvider }
     queue.resource = FlutterChannelSpanExporter.attributes(resourceAttributes)
     var builder = TracerProviderBuilder()
+      .add(spanProcessor: makeAppContextProcessor())
       .add(spanProcessor: makeSpanProcessor(scheduleDelay: scheduleDelay))
       .add(spanProcessors: extraProcessors)
     if let sampler { builder = builder.with(sampler: Samplers.parentBased(root: sampler)) }
@@ -53,6 +59,12 @@ public final class OtelFlutterBridge: @unchecked Sendable {
   public func makeSpanProcessor(scheduleDelay: TimeInterval = 1) -> SpanProcessor {
     BatchSpanProcessor(spanExporter: FlutterChannelSpanExporter(queue: queue),
                        scheduleDelay: scheduleDelay, maxExportBatchSize: 64)
+  }
+
+  /// A processor that stamps `app.screen` / `app.flow`. Add it to your own
+  /// provider, before `makeSpanProcessor()`, when you do not use `start`.
+  public func makeAppContextProcessor() -> SpanProcessor {
+    AppContextSpanProcessor(store: appContext)
   }
 
   /// A tracer from the bridge's provider (or the global one).
@@ -71,18 +83,50 @@ public final class OtelFlutterBridge: @unchecked Sendable {
       traceState: TraceState())
   }
 
-  /// Starts a span that continues the trace Dart sent in `arguments`.
-  /// Use it at the top of a method channel handler.
+  /// Starts a span that continues the trace Dart sent in `arguments`, with
+  /// the screen and flow Dart sent along. Use it at the top of a method
+  /// channel handler. To make requests inside it its children without
+  /// passing the parent around, run that code in
+  /// `OpenTelemetry.instance.contextProvider.withActiveSpan(span) { ... }`.
   public func startSpan(_ name: String, arguments: Any?, kind: SpanKind = .server,
                         attributes: [String: AttributeValue] = [:]) -> Span {
     let builder = tracer().spanBuilder(spanName: name).setSpanKind(spanKind: kind)
-    if let parent = extractContext(from: arguments) {
+    let parent = extractContext(from: arguments)
+    if let parent {
       builder.setParent(parent)
     } else {
       builder.setNoParent()
     }
     attributes.forEach { builder.setAttribute(key: $0.key, value: $0.value) }
-    return builder.startSpan()
+    let span = builder.startSpan()
+    if parent != nil {
+      let values = TraceparentCodec.appContext(fromChannelArguments: arguments) ?? AppContextValues()
+      appContext.register(values, forSpanId: span.context.spanId.hexString)
+      if let screen = values.screen { span.setAttribute(key: AppContextKeys.screen, value: screen) }
+      if let flow = values.flow { span.setAttribute(key: AppContextKeys.flow, value: flow) }
+    }
+    return span
+  }
+
+  /// Returns `arguments` with the trace context of `span` (default: the
+  /// active span) and its screen and flow, for a call from native code to
+  /// Dart. Dart continues the trace with `runWithTraceContext`.
+  ///
+  /// ```swift
+  /// channel.invokeMethod("syncStatement",
+  ///                      arguments: OtelFlutterBridge.shared.withTraceContext(["month": 5], span: span))
+  /// ```
+  public func withTraceContext(_ arguments: [String: Any]? = nil, span: Span? = nil) -> [String: Any] {
+    var args = arguments ?? [:]
+    guard let ctx = (span ?? OpenTelemetry.instance.contextProvider.activeSpan)?.context,
+          ctx.isValid
+    else { return args }
+    let traceparent = TraceparentCodec.format(traceId: ctx.traceId.hexString,
+                                              spanId: ctx.spanId.hexString,
+                                              sampled: ctx.traceFlags.sampled)
+    args[TraceparentCodec.channelContextKey] = TraceparentCodec.channelContext(
+      traceparent: traceparent, app: appContext.values(forSpanId: ctx.spanId.hexString))
+    return args
   }
 
   /// Sends pending spans now.

@@ -92,4 +92,12 @@ equivalent rules in the collector (e.g. the OpenTelemetry Collector
   free text, amounts)? Alternative: narrower patterns per document type.
 - Should `server.address` be kept when it is an IP address? Today the IP is
   scrubbed.
-- Should `exception.message` be allowed at all, given it is free text?
+
+## Decided
+
+- `exception.message` stays allowed (scrubbed like any value). Native code
+  and apps that record exceptions keep useful messages. Dart helpers
+  (`tracedHandler`, `OtelHttpClient`, `invokeTraced`, SDK-recorded
+  exceptions) record only the type. Mitigations: `extraPatterns` for the
+  app's own identifiers, messages written without personal data, and the
+  collector-side redaction (second barrier).

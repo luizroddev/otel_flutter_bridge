@@ -14,6 +14,19 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
 - `tracedHandler(nameOf:)`: one handler serving several operations (e.g. a
   login Bloc with biometric, password and reset) gets one span name per
   operation.
+- iOS: `HTTPClientSpan.start` / `finish`, public, for any native HTTP
+  stack (the app's API client over Alamofire, delegate-based sessions);
+  `TracedURLSession` now uses it. Same rules as Dart: `_OTHER` methods,
+  `error.type` from the 4xx/5xx status first, then the error type.
+- iOS: `appContext.screen` / `.flow` stamped on native spans at start;
+  children copy their parent; `startSpan(_:arguments:)` takes the screen and
+  flow Dart sent, so one trace never mixes screens across the channel.
+- Native → Dart propagation: `OtelFlutterBridge.shared.withTraceContext`
+  (Swift) and `runWithTraceContext` (Dart). `invokeTraced` now also sends
+  `app.screen` / `app.flow` in `_otel` (ignored by older native code).
+- `sampleRatio` is applied to native spans by trace id, with the same
+  sampler as Dart: traces that start in native code were always kept.
+- Redaction spec: `exception.message` stays allowed (decision recorded).
 - Docs: `SpanEnricher` runs at export time and is not suitable for the
   current screen or flow (the guides suggested it; fixed). App guide: the
   trace-per-action model, `AppContext` wiring, shared handlers, and the span
