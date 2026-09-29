@@ -16,13 +16,13 @@ public enum TracedURLSession {
   @available(iOS 15.0, macOS 12.0, *)
   public static func data(for request: URLRequest, session: URLSession = .shared,
                           parent: SpanContext? = nil) async throws -> (Data, URLResponse) {
-    let (span, traced) = HTTPClientSpan.start(request, parent: parent)
+    let call = HTTPClientSpan.start(request, parent: parent)
     do {
-      let (data, response) = try await session.data(for: traced)
-      HTTPClientSpan.finish(span, response: response, error: nil)
+      let (data, response) = try await session.data(for: call.request)
+      call.finish(response: response, error: nil)
       return (data, response)
     } catch {
-      HTTPClientSpan.finish(span, response: nil, error: error)
+      call.finish(response: nil, error: error)
       throw error
     }
   }
@@ -31,10 +31,11 @@ public enum TracedURLSession {
   public static func dataTask(with request: URLRequest, session: URLSession = .shared,
                               parent: SpanContext? = nil,
                               completion: @escaping (Data?, URLResponse?, Error?) -> Void) -> URLSessionDataTask {
-    let (span, traced) = HTTPClientSpan.start(request, parent: parent)
-    let task = session.dataTask(with: traced) { data, response, error in
-      HTTPClientSpan.finish(span, response: response, error: error)
-      completion(data, response, error)
+    let call = HTTPClientSpan.start(request, parent: parent)
+    let task = session.dataTask(with: call.request) { data, response, error in
+      call.finish(response: response, error: error) {
+        completion(data, response, error)
+      }
     }
     task.resume()
     return task

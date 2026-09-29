@@ -84,10 +84,9 @@ public final class OtelFlutterBridge: @unchecked Sendable {
   }
 
   /// Starts a span that continues the trace Dart sent in `arguments`, with
-  /// the screen and flow Dart sent along. Use it at the top of a method
-  /// channel handler. To make requests inside it its children without
-  /// passing the parent around, run that code in
-  /// `OpenTelemetry.instance.contextProvider.withActiveSpan(span) { ... }`.
+  /// the screen and flow Dart sent along. Prefer `traced(channel:_:)`, which
+  /// does this for a whole handler; use this for manual control, with
+  /// `TraceContext.with(span) { ... }` so requests inside become children.
   public func startSpan(_ name: String, arguments: Any?, kind: SpanKind = .server,
                         attributes: [String: AttributeValue] = [:]) -> Span {
     let builder = tracer().spanBuilder(spanName: name).setSpanKind(spanKind: kind)
@@ -109,8 +108,10 @@ public final class OtelFlutterBridge: @unchecked Sendable {
   }
 
   /// Returns `arguments` with the trace context of `span` (default: the
-  /// active span) and its screen and flow, for a call from native code to
-  /// Dart. Dart continues the trace with `runWithTraceContext`.
+  /// current span, `TraceContext.current`) and its screen and flow, for a
+  /// call from native code to Dart. Dart continues the trace with
+  /// `setTracedMethodCallHandler` or `runWithTraceContext`. Prefer
+  /// `channel.invokeTraced`, which does this.
   ///
   /// ```swift
   /// channel.invokeMethod("syncStatement",
@@ -118,7 +119,7 @@ public final class OtelFlutterBridge: @unchecked Sendable {
   /// ```
   public func withTraceContext(_ arguments: [String: Any]? = nil, span: Span? = nil) -> [String: Any] {
     var args = arguments ?? [:]
-    guard let ctx = (span ?? OpenTelemetry.instance.contextProvider.activeSpan)?.context,
+    guard let ctx = (span ?? TraceContext.current)?.context,
           ctx.isValid
     else { return args }
     let traceparent = TraceparentCodec.format(traceId: ctx.traceId.hexString,

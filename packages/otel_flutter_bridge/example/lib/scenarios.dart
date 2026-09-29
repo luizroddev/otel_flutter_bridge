@@ -123,7 +123,25 @@ final scenarios = <Scenario>[
       return 'HTTP ${r.statusCode}';
     }),
   ),
+  Scenario(
+    '9. Nativo → Flutter',
+    'O nativo guarda um callback (bind) e chama o Flutter (invokeTraced).',
+    () => _inSpan('poc.native_event', (_) async {
+      final r = await nativeChannel.invokeTraced<String>('notifyFlutter');
+      return r ?? '';
+    }),
+  ),
 ];
+
+/// Calls from native code: each one continues the native trace.
+void listenToNative() {
+  nativeChannel.setTracedMethodCallHandler((call) async {
+    if (call.method == 'nativeEvent') {
+      _tracer.startSpan('poc.native_event.handle').end();
+    }
+    return null;
+  });
+}
 
 /// Kill switch, as remote config would drive it.
 Future<void> setTelemetryEnabled(bool value) =>

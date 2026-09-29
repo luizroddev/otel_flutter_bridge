@@ -95,3 +95,23 @@ final class HTTPSemanticsTests: XCTestCase {
     XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: Validation()), "Validation")
   }
 }
+
+final class OnceFlagTests: XCTestCase {
+  func testClaimsOnce() {
+    let flag = OnceFlag()
+    XCTAssertTrue(flag.claim())
+    XCTAssertFalse(flag.claim())
+  }
+
+  func testClaimsOnceAcrossThreads() {
+    let flag = OnceFlag()
+    let lock = NSLock()
+    var wins = 0
+    DispatchQueue.concurrentPerform(iterations: 100) { _ in
+      if flag.claim() {
+        lock.lock(); wins += 1; lock.unlock()
+      }
+    }
+    XCTAssertEqual(wins, 1)
+  }
+}

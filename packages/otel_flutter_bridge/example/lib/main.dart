@@ -3,6 +3,7 @@ import 'package:otel_flutter_bridge/inspector.dart';
 import 'package:otel_flutter_bridge/otel_flutter_bridge.dart';
 
 import 'poc_config.dart';
+import 'scenarios.dart';
 import 'scenarios_page.dart';
 
 Future<void> main() async {
@@ -23,6 +24,7 @@ Future<void> main() async {
   // 2. Optional: keep the last exports for the on-screen inspector.
   TelemetryInspectorController.instance.attach();
 
+  listenToNative();
   runApp(const PocApp());
 }
 

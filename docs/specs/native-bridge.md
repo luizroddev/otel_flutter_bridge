@@ -84,7 +84,18 @@ Both directions use the same key in the call arguments (a map):
   flow unless they have a local parent.
 
 Receivers ignore unknown keys, so older versions interoperate (without
-screen and flow). Propagation is explicit per call; generic propagation for
+screen and flow).
+
+Helpers that write and read it:
+
+| Side | Sends | Receives |
+|---|---|---|
+| Dart | `invokeTraced` (client span `channel/method`) | `setTracedMethodCallHandler` (server span `channel/method`) or `runWithTraceContext` |
+| Swift | `FlutterMethodChannel.invokeTraced` (current span) | `traced(channel:_:)` (server span `channel/method`, ends on `result`) or `startSpan(_:arguments:)` |
+
+On the Swift side the "current span" is `TraceContext.current`: a task-local
+the bridge's helpers set (it survives `await` and child tasks), else
+OpenTelemetry's active span (thread-bound). Propagation is explicit per call; generic propagation for
 every message is M7.
 
 ## Sampling

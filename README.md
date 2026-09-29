@@ -70,16 +70,21 @@ span.end();
 // AppDelegate.application(_:didFinishLaunchingWithOptions:)
 OtelFlutterBridge.shared.start()
 
-// In a method channel handler: continue the Dart trace.
-let span = OtelFlutterBridge.shared.startSpan("Payment.pay", arguments: call.arguments)
-defer { span.end() }
-TracedURLSession.dataTask(with: request, parent: span.context) { ... }
+// A channel handler: continues the Dart trace, ends when `result` is called.
+channel.setMethodCallHandler(OtelFlutterBridge.shared.traced(channel: "app/native") { call, result in
+  apiClient.request(Router.cart) { response in result(response.value) }  // HTTP becomes its child
+})
 
-// Any other HTTP stack (Alamofire, your API client): wrap the single call site.
-let (httpSpan, traced) = HTTPClientSpan.start(urlRequest)
-sessionManager.request(traced).validate().responseData { response in
-  HTTPClientSpan.finish(httpSpan, response: response.response, error: response.error)
+// The app's single HTTP call site (Alamofire or anything else).
+let call = HTTPClientSpan.start(urlRequest)
+sessionManager.request(call.request).validate().responseData { response in
+  call.finish(response: response.response, error: response.error) {
+    completion(response)  // runs in the requester's trace
+  }
 }
+
+// Native → Flutter, in the same trace (Dart: setTracedMethodCallHandler).
+channel.invokeTraced("saldoAtualizado")
 ```
 
 ```dart

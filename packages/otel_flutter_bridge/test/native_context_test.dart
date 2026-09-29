@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 import 'package:dartastic_opentelemetry/proto/opentelemetry_proto_dart.dart'
     as pb;
@@ -157,6 +159,65 @@ void main() {
         ),
         throwsA(isA<StateError>()),
       );
+    });
+  });
+
+  group('setTracedMethodCallHandler', () {
+    const traceId = '0af7651916cd43dd8448eb211c80319c';
+    const parentId = 'b7ad6b7169203331';
+
+    Future<ByteData?> callFromNative(String method, Object? args) {
+      final completer = Completer<ByteData?>();
+      messenger.handlePlatformMessage(
+        appChannel.name,
+        const StandardMethodCodec().encodeMethodCall(MethodCall(method, args)),
+        completer.complete,
+      );
+      return completer.future;
+    }
+
+    test('server span continues the native trace; handler spans are children',
+        () async {
+      await init();
+      appChannel.setTracedMethodCallHandler((call) async {
+        OTel.tracer().startSpan('saldo.changed').end();
+        return 'ok';
+      });
+      final reply = await callFromNative('saldoAtualizado', {
+        channelContextKey: {
+          Traceparent.header: '00-$traceId-$parentId-01',
+          appScreenKey: 'Extrato',
+        },
+      });
+      expect(const StandardMethodCodec().decodeEnvelope(reply!), 'ok');
+      await OtelFlutterBridge.flush();
+
+      final server = named('app/native/saldoAtualizado');
+      final child = named('saldo.changed');
+      expect(server.kind, pb.Span_SpanKind.SPAN_KIND_SERVER);
+      expect(_hex(server.traceId), traceId);
+      expect(_hex(server.parentSpanId), parentId);
+      expect(child.parentSpanId, server.spanId);
+      expect(attrs(server), containsPair('rpc.method', 'saldoAtualizado'));
+      expect(attrs(child), containsPair('app.screen', 'Extrato'));
+    });
+
+    test('errors mark the span and reach native code', () async {
+      await init();
+      appChannel.setTracedMethodCallHandler(
+        (call) async => throw PlatformException(code: 'saldo_invalido'),
+      );
+      final reply = await callFromNative('saldoAtualizado', null);
+      expect(
+        () => const StandardMethodCodec().decodeEnvelope(reply!),
+        throwsA(isA<PlatformException>()
+            .having((e) => e.code, 'code', 'saldo_invalido')),
+      );
+      await OtelFlutterBridge.flush();
+      final server = named('app/native/saldoAtualizado');
+      expect(server.parentSpanId, isEmpty);
+      expect(server.status.code, pb.Status_StatusCode.STATUS_CODE_ERROR);
+      expect(attrs(server), containsPair('error.type', 'PlatformException'));
     });
   });
 

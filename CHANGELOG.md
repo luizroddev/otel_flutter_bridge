@@ -14,10 +14,25 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
 - `tracedHandler(nameOf:)`: one handler serving several operations (e.g. a
   login Bloc with biometric, password and reset) gets one span name per
   operation.
-- iOS: `HTTPClientSpan.start` / `finish`, public, for any native HTTP
-  stack (the app's API client over Alamofire, delegate-based sessions);
-  `TracedURLSession` now uses it. Same rules as Dart: `_OTHER` methods,
-  `error.type` from the 4xx/5xx status first, then the error type.
+- iOS: `HTTPClientSpan.start` returns an `HTTPClientCall`; send
+  `call.request` and call `call.finish(response:error:) { continuation }`.
+  Works with any native HTTP stack (the app's API client over Alamofire,
+  delegate-based sessions); the continuation runs in the requester's trace,
+  so what the response triggers stays in it. `TracedURLSession` uses it.
+  Same rules as Dart: `_OTHER` methods, `error.type` from the 4xx/5xx
+  status first, then the error type.
+- iOS: `traced(channel:_:)` wraps a channel handler (span `channel/method`,
+  current while it runs, ends on `result`, `FlutterError` code as
+  `error.type`); `FlutterMethodChannel.invokeTraced` calls Dart in the
+  current trace.
+- iOS: `TraceContext` keeps the current span in a Swift task-local as well
+  as OpenTelemetry's thread-bound context, so it survives `await`;
+  `bind(closure)` and `task { }` carry it through stored callbacks and
+  async code.
+- Dart: `MethodChannel.setTracedMethodCallHandler` continues native traces
+  with a server span per call.
+- Example app: channel handler with `traced`, scenario 9 (native → Flutter
+  with `bind` and `invokeTraced`).
 - iOS: `appContext.screen` / `.flow` stamped on native spans at start;
   children copy their parent; `startSpan(_:arguments:)` takes the screen and
   flow Dart sent, so one trace never mixes screens across the channel.

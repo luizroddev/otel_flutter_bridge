@@ -111,4 +111,54 @@ extension TracedMethodChannel on MethodChannel {
       span.end();
     }
   }
+
+  /// [setMethodCallHandler] where each call from native code is a server
+  /// span named `channel/method` that continues the native trace (sent by
+  /// `channel.invokeTraced` in Swift) with its screen and flow. Spans
+  /// started while [handler] runs are its children. Errors mark the span
+  /// and reach native code unchanged.
+  ///
+  /// A Bloc runs event handlers in the zone where it was created, so events
+  /// added here start their own trace; link them if needed (see the app
+  /// instrumentation guide, case J).
+  void setTracedMethodCallHandler(
+    Future<Object?> Function(MethodCall call)? handler, {
+    Tracer? tracer,
+  }) {
+    if (handler == null) return setMethodCallHandler(null);
+    setMethodCallHandler(
+      (call) => runWithTraceContext(call.arguments, () async {
+        Tracer? t;
+        Span? span;
+        try {
+          t = tracer ?? OTel.tracer();
+          span = t.startSpan(
+            '$name/${call.method}',
+            kind: SpanKind.server,
+            attributes: OTel.attributesFromMap({
+              'rpc.system': rpcSystemFlutterChannel,
+              'rpc.service': name,
+              'rpc.method': call.method,
+            }),
+          );
+        } catch (_) {
+          // Telemetry never breaks the app: run untraced.
+        }
+        if (t == null || span == null) return handler(call);
+        final s = span;
+        try {
+          return await t.withSpanAsync(s, () => handler(call));
+        } catch (e) {
+          markSpanError(s, e);
+          rethrow;
+        } finally {
+          try {
+            s.end();
+          } catch (_) {
+            // Telemetry never breaks the app.
+          }
+        }
+      }),
+    );
+  }
 }
