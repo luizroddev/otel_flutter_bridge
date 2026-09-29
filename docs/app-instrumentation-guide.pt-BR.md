@@ -15,6 +15,7 @@ Pré-requisito: a biblioteca já inicializada (passos 1 a 3 do
 | `OtelDioInterceptor` para dio | Quais hosts recebem `traceparent` (`propagateTo`) |
 | `tracedHandler` para handlers de Bloc | Quais handlers rastrear e o nome de cada span |
 | `invokeTraced` para canais | Atributos `app.*` (`enrich`, `enrichers`) |
+| `AppContext` (tela e fluxo carimbados no início de cada span) | Quando atualizar a tela e o fluxo (navegação) |
 | Redação, sessão, exportação | Padrões extras de redação para ids próprios |
 
 Nada é automático: só é rastreado o que passa por essas peças. Isso é
@@ -130,6 +131,8 @@ abstract final class SpanNames {
   static const ordersLoad = 'orders.load';
   static const ordersRefresh = 'orders.refresh';
   static const checkoutConfirm = 'checkout.confirm';
+  static const authLogin = 'auth.login';
+  static const authPasswordReset = 'auth.password_reset';
 }
 ```
 
@@ -163,6 +166,51 @@ await OtelFlutterBridge.initialize(
 );
 getIt.registerSingleton<http.Client>(buildHttpClient());
 ```
+
+```dart
+// lib/telemetry/screen_observer.dart
+// Atualiza a tela atual a cada navegação. Use nomes de rota fixos
+// ('order.detail'), nunca o caminho com ids ('/orders/123').
+class TelemetryScreenObserver extends NavigatorObserver {
+  void _set(Route<dynamic>? route) {
+    final name = route?.settings.name;
+    if (name != null) AppContext.screen = name;
+  }
+
+  @override
+  void didPush(Route route, Route? previousRoute) => _set(route);
+  @override
+  void didPop(Route route, Route? previousRoute) => _set(previousRoute);
+  @override
+  void didReplace({Route? newRoute, Route? oldRoute}) => _set(newRoute);
+}
+
+// Fluxo: marque o início e o fim da jornada onde ela começa e termina.
+AppContext.flow = 'purchase';   // ao entrar no checkout
+AppContext.flow = null;         // ao concluir ou abandonar
+```
+
+Com `go_router` ou `auto_route`, faça o mesmo no listener do router, com o
+**nome** da rota (não a `location`).
+
+## 2.1 Modelo: um trace por ação, ligado pela sessão e pelo contexto
+
+- **Trace = uma ação causal** (um evento do Bloc, um método do Cubit): do
+  handler até o HTTP, o nativo e o backend.
+- **Jornada = a sessão**: todo span tem `session.id`. Filtrar por ela mostra
+  a linha do tempo do usuário.
+- **Onde o usuário estava = `app.screen` e `app.flow`**, carimbados no
+  início de cada span (filhos herdam do pai, então um trace nunca mistura
+  telas). Permite "todos os traces do fluxo `purchase`" ou "p95 de
+  `orders.load` por tela".
+- **Não faça um trace por tela ou por jornada.** O span raiz só é exportado
+  ao terminar: se o app for morto ou suspenso, a raiz some e os filhos ficam
+  órfãos. A amostragem é por trace (a jornada inteira entra ou sai), e a
+  duração da raiz mede o tempo de leitura do usuário, não o app.
+- **`enrichers` não servem para tela e fluxo**: rodam na exportação, em lote,
+  segundos depois do início do span, e carimbariam a tela errada. Use-os
+  para valores fixos da sessão (tenant, flavor).
+- Métricas de funil e conversão são analytics de produto, não tracing.
 
 ## 3. Casos
 
@@ -201,6 +249,55 @@ on<LoadOrders>(tracedHandler(
     },
   ));
   ```
+
+### A.1 Um handler para vários eventos (ex.: login)
+
+Comum em Blocs de autenticação: `on<SenhaEvent>` trata biometria, senha e
+esqueci a senha num handler só. Com um nome fixo, as três operações viram o
+mesmo span, e latência e erro de coisas diferentes se misturam.
+
+Modele pela **operação**, não pelo evento: biometria e senha são a mesma
+operação (login) com variantes; esqueci a senha é outra operação.
+
+**Opção 1: separar os handlers** (preferível, é o estilo recomendado do
+Bloc), desde que a concorrência não mude:
+
+```dart
+on<LoginBiometria>(tracedHandler(SpanNames.authLogin, _onBiometria,
+    enrich: (s, _) => s.setStringAttribute('app.auth.method', 'biometric')));
+on<LoginSenha>(tracedHandler(SpanNames.authLogin, _onSenha,
+    enrich: (s, _) => s.setStringAttribute('app.auth.method', 'password')));
+on<EsqueciSenha>(tracedHandler(SpanNames.authPasswordReset, _onEsqueci));
+```
+
+Atenção: cada `on<E>` tem seu próprio `transformer`. Se o handler único
+usa `droppable()` ou `sequential()` justamente para impedir, por exemplo,
+login por senha enquanto a biometria roda, separar muda esse comportamento.
+Nesse caso, use a opção 2.
+
+**Opção 2: manter o handler e nomear por evento** com `nameOf`:
+
+```dart
+on<SenhaEvent>(
+  tracedHandler(
+    SpanNames.authLogin,          // usado se nameOf devolver null
+    _onSenhaEvent,
+    nameOf: (e) => switch (e) {
+      LoginBiometria() || LoginSenha() => SpanNames.authLogin,
+      EsqueciSenha() => SpanNames.authPasswordReset,
+    },
+    enrich: (span, e) {
+      if (e is LoginBiometria) span.setStringAttribute('app.auth.method', 'biometric');
+      if (e is LoginSenha) span.setStringAttribute('app.auth.method', 'password');
+    },
+  ),
+  transformer: droppable(),
+);
+```
+
+`nameOf` deve devolver só strings fixas (switch por tipo; com `SenhaEvent`
+`sealed`, o compilador avisa quando surgir um evento novo sem nome). Nunca
+interpole dados do evento.
 
 ### B. Erro tratado dentro do handler
 
@@ -282,10 +379,42 @@ Digitação, scroll, sliders, ticks de timer, eventos vindos de streams
 (websocket, localização): **não use `tracedHandler`**. As requisições que
 eles dispararem continuam rastreadas pelo client, como raízes próprias.
 
-### J. Bloc que escuta outro Bloc ou stream
+### J. Um evento que causa outro (Bloc que escuta Bloc, nativo → Flutter)
 
-Um evento disparado por `stream.listen` de outro Bloc inicia um trace novo.
-É aceitável: são ações diferentes. Não tente encadear.
+Por padrão, um evento disparado por `stream.listen` de outro Bloc, ou por
+uma chamada do nativo, inicia um trace novo. Na maioria dos casos isso é
+correto: são ações diferentes, ligadas pela sessão e pelo `app.flow`.
+
+Quando a causalidade importa para investigar (ex.: o push do nativo que
+dispara a sincronização), ligue os traces com um **span link**: "relacionado
+a, mas não filho de". Capture o contexto no `add` e adicione o link no
+handler:
+
+```dart
+final _addedFrom = Expando<Context>();
+
+class SyncBloc extends Bloc<SyncEvent, SyncState> {
+  SyncBloc() : super(const SyncState.idle()) {
+    on<SyncRequested>(tracedHandler(SpanNames.sync, (event, emit) async {
+      final from = _addedFrom[event]?.span;
+      if (from != null) Context.current.span?.addLink(from.spanContext);
+      // ...
+    }));
+  }
+
+  @override
+  void add(SyncEvent event) {
+    _addedFrom[event] = Context.current; // o contexto de quem chamou add
+    super.add(event);
+  }
+}
+```
+
+Use pai (em vez de link) só se o segundo evento é parte da mesma unidade de
+trabalho e o primeiro espera por ele. Aplique onde a revisão encontrar
+cadeias reais; não em todo Bloc. Limitação: eventos `const` são a mesma
+instância, então dois `add` concorrentes do mesmo evento `const` podem
+trocar de link.
 
 ### K. Inicialização e tarefas em segundo plano
 
@@ -328,6 +457,10 @@ Continuam rastreadas (útil para ver latência), mas sem `traceparent` quando
       do composition root.
 - [ ] `propagateTo` contém só hosts da empresa.
 - [ ] Handlers de alta frequência não usam `tracedHandler`.
+- [ ] Um handler com várias operações usa `nameOf` (ou foi separado sem
+      mudar o `transformer`).
+- [ ] Tela e fluxo vêm de `AppContext`, com nomes de rota fixos; nenhum
+      `enricher` lê a tela atual.
 - [ ] O comportamento do handler não mudou (mesmos estados, mesmos erros).
 
 ## 7. Validação

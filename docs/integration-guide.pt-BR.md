@@ -29,12 +29,12 @@ dependencies:
     git:
       url: https://github.com/luizroddev/otel_flutter_bridge
       path: packages/otel_flutter_bridge
-      ref: v0.1.0-dev.2
+      ref: v0.1.0-dev.3
   otel_flutter_bridge_dio:            # só se o app usa dio
     git:
       url: https://github.com/luizroddev/otel_flutter_bridge
       path: packages/otel_flutter_bridge_dio
-      ref: v0.1.0-dev.2
+      ref: v0.1.0-dev.3
 
 # Necessário enquanto o núcleo não está no pub.dev: o pacote dio o pede de lá.
 dependency_overrides:
@@ -42,7 +42,7 @@ dependency_overrides:
     git:
       url: https://github.com/luizroddev/otel_flutter_bridge
       path: packages/otel_flutter_bridge
-      ref: v0.1.0-dev.2
+      ref: v0.1.0-dev.3
 ```
 
 No iOS a biblioteca usa CocoaPods (`OpenTelemetry-Swift-Api` e `-Sdk` 2.5.1).
@@ -150,7 +150,8 @@ Os mais usados:
 
 | Preciso de… | Use |
 |---|---|
-| Atributo em todo span (ex.: fluxo, tela) | `enrichers:` com chaves `app.*` |
+| Tela e fluxo em todo span | `AppContext.screen` / `AppContext.flow`, atualizados na navegação |
+| Atributo fixo da sessão em todo span (ex.: tenant) | `enrichers:` com chaves `app.*` |
 | Mascarar um identificador próprio | `RedactionConfig(extraPatterns: [...])` |
 | Permitir um atributo novo | `RedactionConfig(allowedAttributes: {...})` |
 | Enviar pelo cliente HTTP do app (pinning, proxy) | `transport:` com um `TraceTransport` próprio |

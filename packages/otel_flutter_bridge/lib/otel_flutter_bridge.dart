@@ -3,6 +3,7 @@
 /// privacy-by-default redaction.
 library;
 
+export 'src/app_context.dart';
 export 'src/channel_propagation.dart';
 export 'src/config.dart';
 export 'src/diagnostics.dart';

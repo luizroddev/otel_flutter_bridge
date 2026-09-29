@@ -5,6 +5,20 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
 
 ## Unreleased
 
+## 0.1.0-dev.3
+
+- `AppContext.screen` / `AppContext.flow`: stamped as `app.screen` /
+  `app.flow` on every Dart span when it starts (installed by `initialize`).
+  Child spans copy their local parent, so one trace never mixes screens.
+  Both keys are always allowed by redaction; values are still scrubbed.
+- `tracedHandler(nameOf:)`: one handler serving several operations (e.g. a
+  login Bloc with biometric, password and reset) gets one span name per
+  operation.
+- Docs: `SpanEnricher` runs at export time and is not suitable for the
+  current screen or flow (the guides suggested it; fixed). App guide: the
+  trace-per-action model, `AppContext` wiring, shared handlers, and the span
+  link pattern for events caused by other events.
+
 ## 0.1.0-dev.2
 
 - `OtelHttpClient`: `package:http` client wrapper with one client span per

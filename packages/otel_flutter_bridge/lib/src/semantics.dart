@@ -5,6 +5,13 @@ library;
 /// `session.id`, from the OpenTelemetry session semantic conventions.
 const sessionIdKey = 'session.id';
 
+/// The screen the user was on when a span started. See `AppContext`.
+const appScreenKey = 'app.screen';
+
+/// The flow (journey across screens) the user was in when a span started.
+/// See `AppContext`.
+const appFlowKey = 'app.flow';
+
 /// Where a span was created: [bridgeSourceDart] or [bridgeSourceNative].
 const bridgeSourceKey = 'otel_flutter_bridge.source';
 

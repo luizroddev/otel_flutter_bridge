@@ -60,7 +60,7 @@ void main() {
       final span = spanWith([
         kv('poc.step', 'login'),
         kv('feature.flag', 'on'),
-        kv('app.screen', 'home'),
+        kv('app.note', 'x'),
       ]);
       r.redactSpan(span);
       expect(attrsOf(span).keys, unorderedEquals(['poc.step', 'feature.flag']));
