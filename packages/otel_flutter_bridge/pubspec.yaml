@@ -20,6 +20,7 @@ dependencies:
   http: ^1.2.0
 
 dev_dependencies:
+  bloc: ^9.0.0
   flutter_lints: ^6.0.0
   flutter_test:
     sdk: flutter

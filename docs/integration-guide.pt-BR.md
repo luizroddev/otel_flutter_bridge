@@ -119,9 +119,14 @@ Escolha **um** fluxo de ponta a ponta. Três pontos de contato bastam:
    defer { span.end() }
    ```
 
-3. **HTTP**: no Dart, adicione `OtelDioInterceptor(propagateTo: {'host-da-sua-api'})`.
+3. **HTTP**: no Dart, com dio adicione `OtelDioInterceptor(propagateTo: {'host-da-sua-api'})`;
+   com `package:http`, envolva o client do app em
+   `OtelHttpClient(http.Client(), propagateTo: {'host-da-sua-api'})`.
    No nativo, troque a chamada do `URLSession` desse fluxo por
    `TracedURLSession.dataTask(with:parent: span.context)`.
+
+Para apps com Bloc ou Cubit, e para decidir onde encaixar cada peça, siga o
+[guia de instrumentação do app](app-instrumentation-guide.pt-BR.md).
 
 ## 5. Mostrar na tela
 

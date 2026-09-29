@@ -5,6 +5,14 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
 
 ## Unreleased
 
+- `OtelHttpClient`: `package:http` client wrapper with one client span per
+  request and `traceparent` injection, same rules as the dio interceptor.
+- `tracedHandler`: wraps Bloc event handlers (or any two-argument callback)
+  in a span, without depending on `bloc`.
+- Example app: scenario 8, HTTP through `package:http`.
+- Docs: app instrumentation guide (pt-BR) with the project review, the cases
+  and the rollout; ADR 0004 amended with the rule for new packages.
+
 ## 0.1.0-dev.1
 
 First development version (milestones M0–M4 of the [roadmap](docs/roadmap.md)).
