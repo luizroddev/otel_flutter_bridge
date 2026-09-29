@@ -29,12 +29,12 @@ dependencies:
     git:
       url: https://github.com/luizroddev/otel_flutter_bridge
       path: packages/otel_flutter_bridge
-      ref: v0.1.0-dev.2
+      ref: v0.1.0-dev.3
   otel_flutter_bridge_dio:            # só se o app usa dio
     git:
       url: https://github.com/luizroddev/otel_flutter_bridge
       path: packages/otel_flutter_bridge_dio
-      ref: v0.1.0-dev.2
+      ref: v0.1.0-dev.3
 
 # Necessário enquanto o núcleo não está no pub.dev: o pacote dio o pede de lá.
 dependency_overrides:
@@ -42,7 +42,7 @@ dependency_overrides:
     git:
       url: https://github.com/luizroddev/otel_flutter_bridge
       path: packages/otel_flutter_bridge
-      ref: v0.1.0-dev.2
+      ref: v0.1.0-dev.3
 ```
 
 No iOS a biblioteca usa CocoaPods (`OpenTelemetry-Swift-Api` e `-Sdk` 2.5.1).
@@ -112,18 +112,22 @@ Escolha **um** fluxo de ponta a ponta. Três pontos de contato bastam:
    await meuCanal.invokeTraced('metodo', arguments: {...});
    ```
 
-   No handler nativo correspondente:
+   No nativo, registre o canal (mesmo nome do Dart) com `traced`: cada
+   chamada continua o trace e termina quando o `result` é chamado.
 
    ```swift
-   let span = OtelFlutterBridge.shared.startSpan("Feature.metodo", arguments: call.arguments)
-   defer { span.end() }
+   canal.setMethodCallHandler(OtelFlutterBridge.shared.traced(channel: "meu/canal") { call, result in
+     // o handler de sempre
+   })
    ```
 
 3. **HTTP**: no Dart, com dio adicione `OtelDioInterceptor(propagateTo: {'host-da-sua-api'})`;
    com `package:http`, envolva o client do app em
    `OtelHttpClient(http.Client(), propagateTo: {'host-da-sua-api'})`.
-   No nativo, troque a chamada do `URLSession` desse fluxo por
-   `TracedURLSession.dataTask(with:parent: span.context)`.
+   No nativo, com `URLSession` direto use
+   `TracedURLSession.dataTask(with:parent: span.context)`; com Alamofire ou
+   um client próprio, use `HTTPClientSpan.start` / `finish` no ponto único
+   de rede (veja o guia de instrumentação do app, seção 4).
 
 Para apps com Bloc ou Cubit, e para decidir onde encaixar cada peça, siga o
 [guia de instrumentação do app](app-instrumentation-guide.pt-BR.md).
@@ -150,7 +154,8 @@ Os mais usados:
 
 | Preciso de… | Use |
 |---|---|
-| Atributo em todo span (ex.: fluxo, tela) | `enrichers:` com chaves `app.*` |
+| Tela e fluxo em todo span | `AppContext.screen` / `AppContext.flow`, atualizados na navegação |
+| Atributo fixo da sessão em todo span (ex.: tenant) | `enrichers:` com chaves `app.*` |
 | Mascarar um identificador próprio | `RedactionConfig(extraPatterns: [...])` |
 | Permitir um atributo novo | `RedactionConfig(allowedAttributes: {...})` |
 | Enviar pelo cliente HTTP do app (pinning, proxy) | `transport:` com um `TraceTransport` próprio |

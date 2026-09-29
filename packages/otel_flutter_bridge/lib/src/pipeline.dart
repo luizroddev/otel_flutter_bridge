@@ -30,6 +30,11 @@ abstract interface class SessionIdProvider {
 
 /// Adds or changes attributes of a span before redaction.
 ///
+/// Runs at export time, in batches, seconds after the span started: use it
+/// for values that do not change during the session (tenant, build flavor).
+/// For the current screen or flow use `AppContext`, which is read when the
+/// span starts.
+///
 /// Extension point. Whatever an enricher adds must still be allowed by the
 /// redaction config (for example under the `app.` prefix), or it is dropped.
 typedef SpanEnricher = void Function(pb.Span span, SpanOrigin origin);

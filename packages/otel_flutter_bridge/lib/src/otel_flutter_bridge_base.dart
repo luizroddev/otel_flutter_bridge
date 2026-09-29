@@ -6,6 +6,7 @@ import 'package:dartastic_opentelemetry/proto/opentelemetry_proto_dart.dart'
     as pb;
 import 'package:flutter/foundation.dart';
 
+import 'app_context.dart';
 import 'config.dart';
 import 'diagnostics.dart';
 import 'exporter.dart';
@@ -122,6 +123,7 @@ abstract final class OtelFlutterBridge {
         ),
       );
       if (!kDebugMode) OTelLog.logFunction = null;
+      OTel.tracerProvider().addSpanProcessor(AppContextSpanProcessor());
       for (final p in spanProcessors) {
         OTel.tracerProvider().addSpanProcessor(p);
       }
@@ -130,7 +132,11 @@ abstract final class OtelFlutterBridge {
       _session = session;
 
       if (connectNative) {
-        _native = NativeBridge(pipeline, onDiagnostic: onDiagnostic);
+        _native = NativeBridge(
+          pipeline,
+          onDiagnostic: onDiagnostic,
+          sampleRatio: config.sampleRatio,
+        );
         await _native!.connect(
           enabled: config.enabled,
           maxBatchSize: config.limits.maxNativeBatchSize,
@@ -172,6 +178,7 @@ abstract final class OtelFlutterBridge {
     } catch (_) {
       // Telemetry never breaks the app.
     } finally {
+      AppContext.clear();
       _pipeline = null;
       _native = null;
       _session = null;

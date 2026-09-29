@@ -1,3 +1,7 @@
+## 0.1.0-dev.3
+
+- `AppContext` and `tracedHandler(nameOf:)`. See the repository CHANGELOG.md.
+
 ## 0.1.0-dev.2
 
 - `OtelHttpClient` and `tracedHandler`. See the repository CHANGELOG.md.

@@ -70,10 +70,21 @@ span.end();
 // AppDelegate.application(_:didFinishLaunchingWithOptions:)
 OtelFlutterBridge.shared.start()
 
-// In a method channel handler: continue the Dart trace.
-let span = OtelFlutterBridge.shared.startSpan("Payment.pay", arguments: call.arguments)
-defer { span.end() }
-TracedURLSession.dataTask(with: request, parent: span.context) { ... }
+// A channel handler: continues the Dart trace, ends when `result` is called.
+channel.setMethodCallHandler(OtelFlutterBridge.shared.traced(channel: "app/native") { call, result in
+  apiClient.request(Router.cart) { response in result(response.value) }  // HTTP becomes its child
+})
+
+// The app's single HTTP call site (Alamofire or anything else).
+let call = HTTPClientSpan.start(urlRequest)
+sessionManager.request(call.request).validate().responseData { response in
+  call.finish(response: response.response, error: response.error) {
+    completion(response)  // runs in the requester's trace
+  }
+}
+
+// Native → Flutter, in the same trace (Dart: setTracedMethodCallHandler).
+channel.invokeTraced("saldoAtualizado")
 ```
 
 ```dart
@@ -119,8 +130,9 @@ pull request.
 - Android: Dart telemetry works; the native Android bridge is planned (M7).
 - No offline buffer, retries or flush on background yet (M7). Data in memory
   is lost if the app is killed.
-- Channel propagation is manual per call (`invokeTraced`); generic
-  propagation is M7.
+- Channel propagation is explicit: `invokeTraced` on the calling side and
+  `traced(channel:)` (Swift) / `setTracedMethodCallHandler` (Dart) on the
+  receiving side; generic propagation is M7.
 - Native crash capture is out of scope; keep your crash reporter.
 - Traces only. Metrics and logs are out of scope for now.
 

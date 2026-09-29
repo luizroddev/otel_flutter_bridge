@@ -62,13 +62,49 @@ Dart spans: same redaction, same destination.
   thread.
 - `setEnabled(false)` discards what is pending and drops new spans.
 
-## Trace context Dart → native
+## Trace context across the channel
 
-Dart puts `{"_otel": {"traceparent": "<W3C value>"}}` in the channel
-arguments (`invokeTraced` / `withTraceContext`). Native reads it with
-`OtelFlutterBridge.shared.startSpan(_:arguments:)` or `extractContext(from:)`.
-Today this is manual per call (M4). Generic propagation for every
-message is M7.
+Both directions use the same key in the call arguments (a map):
+
+```
+"_otel": {
+  "traceparent": "<W3C value>",   // required
+  "app.screen": "<string>",        // optional, the sender span's screen
+  "app.flow": "<string>"           // optional, the sender span's flow
+}
+```
+
+- **Dart → native**: `invokeTraced` / `withTraceContext` write it. Native
+  reads it with `OtelFlutterBridge.shared.startSpan(_:arguments:)` (also
+  stamps and registers the screen and flow, so native children copy them)
+  or `extractContext(from:)`.
+- **Native → Dart**: `OtelFlutterBridge.shared.withTraceContext(_:span:)`
+  writes it. Dart continues with `runWithTraceContext(arguments, fn)`: spans
+  started in `fn` are children of the native span and take its screen and
+  flow unless they have a local parent.
+
+Receivers ignore unknown keys, so older versions interoperate (without
+screen and flow).
+
+Helpers that write and read it:
+
+| Side | Sends | Receives |
+|---|---|---|
+| Dart | `invokeTraced` (client span `channel/method`) | `setTracedMethodCallHandler` (server span `channel/method`) or `runWithTraceContext` |
+| Swift | `FlutterMethodChannel.invokeTraced` (current span) | `traced(channel:_:)` (server span `channel/method`, ends on `result`) or `startSpan(_:arguments:)` |
+
+On the Swift side the "current span" is `TraceContext.current`: a task-local
+the bridge's helpers set (it survives `await` and child tasks), else
+OpenTelemetry's active span (thread-bound). Propagation is explicit per call; generic propagation for
+every message is M7.
+
+## Sampling
+
+Dart applies `sampleRatio` to native spans by trace id, with the same
+`TraceIdRatioSampler` it uses for Dart roots. A trace sampled in Dart keeps
+its native spans (same trace id, same decision); a trace that starts in
+native code is kept or dropped at the same rate. Native code records
+everything until then (the native sampler defaults to always on).
 
 ## If Dart never answers
 

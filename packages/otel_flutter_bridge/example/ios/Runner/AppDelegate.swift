@@ -33,38 +33,39 @@ import UIKit
 }
 
 /// Stands in for the host app's existing native code, called from Flutter.
-/// Shows how a real native feature continues the Dart trace.
+/// Shows how a real native feature continues the Dart trace with one line
+/// per channel (`traced`), and calls Flutter back in the same trace.
 enum PocNativeChannel {
+  private static var channel: FlutterMethodChannel?
+
   static func register(messenger: FlutterBinaryMessenger) {
     let channel = FlutterMethodChannel(name: "poc/native", binaryMessenger: messenger)
-    channel.setMethodCallHandler { call, result in
+    self.channel = channel
+    channel.setMethodCallHandler(OtelFlutterBridge.shared.traced(channel: "poc/native") { call, result in
       switch call.method {
       case "loadCart": loadCart(call.arguments, result: result)
-      case "nativeFailure": nativeFailure(call.arguments, result: result)
+      case "nativeFailure": nativeFailure(result: result)
+      case "notifyFlutter": notifyFlutter(result: result)
       default: result(FlutterMethodNotImplemented)
       }
-    }
+    })
   }
 
-  /// Native work plus a native HTTP call, both children of the Dart span.
+  /// Native work plus a native HTTP call, both children of the channel span.
   private static func loadCart(_ arguments: Any?, result: @escaping FlutterResult) {
-    let span = OtelFlutterBridge.shared.startSpan("NativeCart.load", arguments: arguments)
-    span.setAttribute(key: "app.native.feature", value: "cart")
-
-    // Simulated local work, as its own child span.
-    let work = OtelFlutterBridge.shared.tracer().spanBuilder(spanName: "NativeCart.readCache")
-      .setParent(span).startSpan()
+    // Simulated local work, as its own child span (parent: the current span).
+    let work = OtelFlutterBridge.shared.span("NativeCart.readCache",
+                                             attributes: ["app.native.feature": .string("cart")])
     Thread.sleep(forTimeInterval: 0.03)
     work.end()
 
     let args = arguments as? [String: Any]
     guard let urlString = args?["url"] as? String, let url = URL(string: urlString) else {
-      span.end()
       result("sem URL: só processamento nativo")
       return
     }
-    TracedURLSession.dataTask(with: URLRequest(url: url), parent: span.context) { _, response, error in
-      span.end()
+    // No parent argument: the traced handler's span is current.
+    TracedURLSession.dataTask(with: URLRequest(url: url)) { _, response, error in
       DispatchQueue.main.async {
         if let error {
           result("HTTP nativo falhou: \(type(of: error))")
@@ -75,14 +76,21 @@ enum PocNativeChannel {
     }
   }
 
-  private static func nativeFailure(_ arguments: Any?, result: @escaping FlutterResult) {
-    let span = OtelFlutterBridge.shared.startSpan("NativePayment.confirm", arguments: arguments)
-    span.status = .error(description: "payment refused for customer 123.456.789-09")
-    span.addEvent(name: "exception", attributes: [
+  private static func nativeFailure(result: @escaping FlutterResult) {
+    TraceContext.current?.addEvent(name: "exception", attributes: [
       "exception.type": .string("PaymentError"),
-      "exception.message": .string("card 4111 1111 1111 1111 declined"),
+      "exception.message": .string("card 4111 1111 1111 1111 declined for 123.456.789-09"),
     ])
-    span.end()
     result(FlutterError(code: "payment_failed", message: "Pagamento recusado (simulado)", details: nil))
+  }
+
+  /// A stored callback (like a manager's queue) that later calls Flutter:
+  /// `bind` keeps it in this trace, `invokeTraced` carries it to Dart.
+  private static func notifyFlutter(result: @escaping FlutterResult) {
+    let later = OtelFlutterBridge.shared.bind {
+      channel?.invokeTraced("nativeEvent", arguments: ["kind": "saldo"])
+      result("evento enviado ao Flutter")
+    }
+    DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: later)
   }
 }
