@@ -198,8 +198,6 @@ links. Do not scrub the values of `session.id`, `session.previous_id`,
   store a keyed hash of it as `user.hash`. A plain hash of a document
   number is not protection: the space of valid numbers is small enough to
   hash all of them.
-- Record where each identity came from (`device`, `server`), so the
-  dashboard can tell a claim from a check.
 
 ### Store
 
