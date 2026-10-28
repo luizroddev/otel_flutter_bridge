@@ -31,7 +31,9 @@ scrubbed name is a naming bug.
 | OpenTelemetry semantic conventions (`http.*`, `url.*`, `server.*`, `rpc.*`, `error.*`, `exception.*`, `os.*`, `device.*`, `service.*`) | Standard |
 | `session.id` | Library |
 | `otel_flutter_bridge.*` | Library only (`otel_flutter_bridge.source` = `dart` / `native`) |
-| `app.screen`, `app.flow` | Defined by the library, values set by the app through `AppContext`; stamped at span start, always allowed |
+| `user.id`, `device.id` | Standard keys, values from the app (`Journey.setUser`, `OtelBridgeConfig.deviceId`); opaque ids, not scrubbed |
+| `app.screen.name`, `app.flow.name`, `app.flow.instance_id` | Defined by the library, values set through `Journey` (or `AppContext`); stamped at span start, always allowed |
+| Journey keys (`app.*.label`, `app.action.*`, `app.outcome`, `app.duration_ms`) | Defined by the library; see [journey.md](journey.md) |
 | `app.*` | The app using the library. Allowed by default, values scrubbed |
 
 `rpc.system` for channel calls is `flutter_platform_channel`.

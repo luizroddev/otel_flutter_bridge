@@ -44,8 +44,9 @@ void main() {
     await OtelFlutterBridge.flush();
 
     expect(attrs('checkout.confirm'),
-        containsPair('app.screen', 'checkout.review'));
-    expect(attrs('checkout.confirm'), containsPair('app.flow', 'purchase'));
+        containsPair('app.screen.name', 'checkout.review'));
+    expect(
+        attrs('checkout.confirm'), containsPair('app.flow.name', 'purchase'));
   });
 
   test('children copy the local parent, even after navigation', () async {
@@ -67,17 +68,18 @@ void main() {
 
     for (final s in transport.spans.where((s) => s.name == 'GET')) {
       final a = {for (final kv in s.attributes) kv.key: kv.value.stringValue};
-      expect(a, containsPair('app.screen', 'orders'));
+      expect(a, containsPair('app.screen.name', 'orders'));
     }
-    expect(attrs('order.open'), containsPair('app.screen', 'order.detail'));
+    expect(
+        attrs('order.open'), containsPair('app.screen.name', 'order.detail'));
   });
 
   test('nothing set, nothing stamped', () async {
     await init();
     OTel.tracer().startSpan('x.y').end();
     await OtelFlutterBridge.flush();
-    expect(attrs('x.y').keys, isNot(contains('app.screen')));
-    expect(attrs('x.y').keys, isNot(contains('app.flow')));
+    expect(attrs('x.y').keys, isNot(contains('app.screen.name')));
+    expect(attrs('x.y').keys, isNot(contains('app.flow.name')));
   });
 
   test('kept when the app replaces the allowed prefixes', () async {
@@ -87,7 +89,7 @@ void main() {
     AppContext.screen = 'home';
     OTel.tracer().startSpan('x.y').end();
     await OtelFlutterBridge.flush();
-    expect(attrs('x.y'), containsPair('app.screen', 'home'));
+    expect(attrs('x.y'), containsPair('app.screen.name', 'home'));
   });
 
   test('values are still scrubbed', () async {
@@ -95,7 +97,7 @@ void main() {
     AppContext.screen = '/orders/123456/detail';
     OTel.tracer().startSpan('x.y').end();
     await OtelFlutterBridge.flush();
-    expect(attrs('x.y')['app.screen'], isNot(contains('123456')));
+    expect(attrs('x.y')['app.screen.name'], isNot(contains('123456')));
   });
 
   test('shutdown clears the context', () async {

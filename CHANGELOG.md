@@ -5,6 +5,27 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
 
 ## Unreleased
 
+- Journey (`Journey`): screens, flows and actions declared as plain enums
+  (`JourneyScreen`, `JourneyFlow`, `JourneyAction`). `Journey.screen`,
+  `Journey.startFlow` / `JourneyFlowRun.end`, `Journey.event` (instant) and
+  `Journey.track` (span plus event with duration and outcome). Outcomes are
+  `success`, `failure`, `cancelled` and `completed` (the default: finishing
+  is not succeeding). Contract in `docs/specs/journey.md`.
+- Journey events are OTLP log records sent to `/v1/logs`
+  (`OtelBridgeConfig.exportLogs`, on by default; `logTransport:` on
+  `initialize`), through the same redaction (body always removed), limits
+  and kill switch as spans.
+- `JourneyNavigatorObserver`: screen views from page routes.
+- `Journey.setUser` (`user.id`) and `OtelBridgeConfig.deviceId`
+  (`device.id`, resource).
+- Dart spans carry `session.id`, `user.id` and the flow run
+  (`app.flow.instance_id`) from when they start; a session renewed later
+  never takes older spans.
+- Breaking: `app.screen` / `app.flow` are now `app.screen.name` (semantic
+  conventions) / `app.flow.name`, on both sides of the channel.
+- Example app: scenario 10, a fictional shop journey (login retry and
+  purchase).
+
 ## 0.1.0-dev.3
 
 - `AppContext.screen` / `AppContext.flow`: stamped as `app.screen` /

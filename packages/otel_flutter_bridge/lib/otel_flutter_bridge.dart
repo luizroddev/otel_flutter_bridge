@@ -1,6 +1,7 @@
 /// OpenTelemetry for add-to-app Flutter apps: one pipeline for Dart and
-/// native spans, W3C trace context across the platform channel, and
-/// privacy-by-default redaction.
+/// native spans, journey events (screens, flows, actions) as OTLP logs,
+/// W3C trace context across the platform channel, and privacy-by-default
+/// redaction.
 library;
 
 export 'src/app_context.dart'
@@ -10,6 +11,16 @@ export 'src/config.dart';
 export 'src/diagnostics.dart';
 export 'src/exporter.dart';
 export 'src/http_client.dart';
+export 'src/journey.dart'
+    show
+        Journey,
+        JourneyAction,
+        JourneyAttributes,
+        JourneyFlow,
+        JourneyFlowRun,
+        JourneyOutcome,
+        JourneyScreen;
+export 'src/journey_navigator_observer.dart';
 export 'src/native_batch.dart' show DecodedNativeBatch, decodeNativeBatch;
 export 'src/native_bridge.dart';
 export 'src/otel_flutter_bridge_base.dart';

@@ -10,9 +10,11 @@ import 'app_context.dart';
 import 'config.dart';
 import 'diagnostics.dart';
 import 'exporter.dart';
+import 'journey.dart';
 import 'native_bridge.dart';
 import 'pipeline.dart';
 import 'redaction.dart';
+import 'semantics.dart';
 import 'session.dart';
 import 'span_errors.dart';
 import 'transport.dart';
@@ -47,6 +49,8 @@ abstract final class OtelFlutterBridge {
   ///
   /// Extension points:
   /// - [transport] replaces the default OTLP/HTTP sender.
+  /// - [logTransport] replaces the default OTLP/HTTP sender of journey
+  ///   events (`Journey`). Ignored when `config.exportLogs` is false.
   /// - [enrichers] add attributes to every span before redaction.
   /// - [sessionIdProvider] replaces the built-in session rules.
   /// - [onDiagnostic] receives internal problems (no span data).
@@ -55,6 +59,7 @@ abstract final class OtelFlutterBridge {
   static Future<void> initialize(
     OtelBridgeConfig config, {
     TraceTransport? transport,
+    LogTransport? logTransport,
     List<SpanEnricher> enrichers = const [],
     SessionIdProvider? sessionIdProvider,
     DiagnosticListener? onDiagnostic,
@@ -71,6 +76,7 @@ abstract final class OtelFlutterBridge {
           'service.version': config.serviceVersion!,
         if (config.deploymentEnvironment != null)
           'deployment.environment.name': config.deploymentEnvironment!,
+        if (config.deviceId != null) deviceIdKey: config.deviceId!,
         ..._platformAttributes(),
         ...config.resourceAttributes,
       };
@@ -81,6 +87,14 @@ abstract final class OtelFlutterBridge {
               headers: config.headers,
               timeout: config.exportTimeout,
             ),
+        logTransport: !config.exportLogs
+            ? null
+            : logTransport ??
+                OtlpHttpLogTransport(
+                  config.logsEndpoint,
+                  headers: config.headers,
+                  timeout: config.exportTimeout,
+                ),
         redactor: Redactor(
           config.redaction,
           maxValueLength: config.limits.maxAttributeValueLength,
@@ -123,13 +137,22 @@ abstract final class OtelFlutterBridge {
         ),
       );
       if (!kDebugMode) OTelLog.logFunction = null;
-      OTel.tracerProvider().addSpanProcessor(AppContextSpanProcessor());
+      OTel.tracerProvider()
+          .addSpanProcessor(AppContextSpanProcessor(session: session));
       for (final p in spanProcessors) {
         OTel.tracerProvider().addSpanProcessor(p);
       }
 
       _pipeline = pipeline;
       _session = session;
+      Journey.install(
+        JourneyRecorder(
+          pipeline,
+          session,
+          scheduleDelay: scheduleDelay,
+          maxBatchSize: config.limits.maxSpansPerExport,
+        ),
+      );
 
       if (connectNative) {
         _native = NativeBridge(
@@ -145,6 +168,7 @@ abstract final class OtelFlutterBridge {
     } catch (e) {
       _pipeline = null;
       _session = null;
+      Journey.install(null);
       onDiagnostic?.call(
         BridgeDiagnostic(BridgeDiagnosticKind.initFailed, '${e.runtimeType}'),
       );
@@ -162,6 +186,7 @@ abstract final class OtelFlutterBridge {
   static Future<void> flush() async {
     try {
       await OTel.tracerProvider().forceFlush();
+      Journey.flushBuffer();
       await _pipeline?.flush();
     } catch (_) {
       // Telemetry never breaks the app.
@@ -178,6 +203,8 @@ abstract final class OtelFlutterBridge {
     } catch (_) {
       // Telemetry never breaks the app.
     } finally {
+      Journey.install(null);
+      Journey.reset();
       AppContext.clear();
       _pipeline = null;
       _native = null;

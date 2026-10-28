@@ -17,8 +17,9 @@ not even hashed.
 Allowed by default (`defaultAllowedAttributes`): `service.name`,
 `service.version`, `service.namespace`, `deployment.environment.name`,
 `telemetry.sdk.*` (name, language, version), `os.type`, `os.name`,
-`os.version`, `device.model.identifier`, `device.manufacturer`, `session.id`,
-`app.screen`, `app.flow`,
+`os.version`, `device.model.identifier`, `device.manufacturer`, `device.id`,
+`session.id`, `user.id`, `event.name`, the journey keys (`app.screen.*`,
+`app.flow.*`, `app.action.*`, `app.outcome`, `app.duration_ms`),
 `http.request.method`, `http.response.status_code`, `http.route`,
 `url.scheme`, `url.path`, `server.address`, `server.port`,
 `network.protocol.version`, `error.type`, `exception.type`,
@@ -65,6 +66,16 @@ resource attributes that describe the app and device (`service.*`,
 `deployment.environment.name`, `telemetry.sdk.*`, `os.*`, `device.*`). They
 come from configuration or the OS and scrubbing would corrupt them (a build
 number is a digit run).
+
+Also trusted: `user.id` and `device.id`, ids the app passes on purpose
+(`Journey.setUser`, `OtelBridgeConfig.deviceId`), and the journey values the
+library generates (`event.name`, `app.flow.instance_id`,
+`app.action.instance_id`, `app.outcome`). A numeric user id would otherwise
+be redacted as a document number. The app must pass opaque ids there, never
+an e-mail or a document.
+
+Journey events are log records: their body is always removed and only their
+attributes are sent, through the same allowlist and scrubbing.
 
 ## 5. Extra rules through configuration
 

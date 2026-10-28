@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:otel_flutter_bridge/otel_flutter_bridge.dart';
 import 'package:otel_flutter_bridge_dio/otel_flutter_bridge_dio.dart';
 
+import 'journey_demo.dart';
 import 'poc_config.dart';
 
 /// The host app's own native channel. In a real app this already exists.
@@ -46,7 +47,7 @@ final scenarios = <Scenario>[
     '1. Span simples (Dart)',
     'Um span com atributo app.*. Critério do M0.',
     () => _inSpan('poc.simple', (span) async {
-      span.setStringAttribute('app.screen', 'home');
+      span.setStringAttribute('app.screen.name', 'home');
       return 'Span criado';
     }),
   ),
@@ -130,6 +131,12 @@ final scenarios = <Scenario>[
       final r = await nativeChannel.invokeTraced<String>('notifyFlutter');
       return r ?? '';
     }),
+  ),
+  const Scenario(
+    '10. Jornada: login e compra',
+    'Telas, fluxos e ações (Journey): login falha, nova tentativa entra, '
+        'depois uma compra. Eventos saem como logs OTLP (OTEL_LOGS=true).',
+    runShopJourney,
   ),
 ];
 

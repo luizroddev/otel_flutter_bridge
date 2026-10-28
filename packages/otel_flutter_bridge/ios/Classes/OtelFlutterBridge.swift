@@ -14,7 +14,7 @@ public final class OtelFlutterBridge: @unchecked Sendable {
   public let queue = PendingSpanQueue()
 
   /// Current screen and flow of the host app, stamped on native spans when
-  /// they start (`app.screen`, `app.flow`). Set `appContext.screen` when a
+  /// they start (`app.screen.name`, `app.flow.name`). Set `appContext.screen` when a
   /// native screen appears; Flutter screens are set from Dart.
   public let appContext = AppContextStore()
 
@@ -61,7 +61,7 @@ public final class OtelFlutterBridge: @unchecked Sendable {
                        scheduleDelay: scheduleDelay, maxExportBatchSize: 64)
   }
 
-  /// A processor that stamps `app.screen` / `app.flow`. Add it to your own
+  /// A processor that stamps `app.screen.name` / `app.flow.name`. Add it to your own
   /// provider, before `makeSpanProcessor()`, when you do not use `start`.
   public func makeAppContextProcessor() -> SpanProcessor {
     AppContextSpanProcessor(store: appContext)

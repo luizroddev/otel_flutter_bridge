@@ -109,3 +109,78 @@ class TeeTransport implements TraceTransport {
     }
   }
 }
+
+/// Sends redacted OTLP log requests (journey events) somewhere.
+///
+/// Same contract as [TraceTransport]: implementations must not throw.
+abstract interface class LogTransport {
+  /// Sends [request]. Returns true when it was accepted.
+  Future<bool> send(pb.ExportLogsServiceRequest request);
+
+  /// Releases resources.
+  Future<void> close();
+}
+
+/// Default log transport: OTLP over HTTP with protobuf encoding.
+class OtlpHttpLogTransport implements LogTransport {
+  /// Creates a transport that posts to [url], the full `/v1/logs` URL.
+  OtlpHttpLogTransport(
+    this.url, {
+    Map<String, String> headers = const {},
+    this.timeout = const Duration(seconds: 10),
+    http.Client? client,
+  })  : _headers = {
+          ...headers,
+          'Content-Type': 'application/x-protobuf',
+        },
+        _client = client ?? http.Client();
+
+  /// Full `/v1/logs` URL.
+  final Uri url;
+
+  /// Timeout of each request.
+  final Duration timeout;
+
+  final Map<String, String> _headers;
+  final http.Client _client;
+
+  @override
+  Future<bool> send(pb.ExportLogsServiceRequest request) async {
+    try {
+      final response = await _client
+          .post(url, headers: _headers, body: request.writeToBuffer())
+          .timeout(timeout);
+      return response.statusCode >= 200 && response.statusCode < 300;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  @override
+  Future<void> close() async => _client.close();
+}
+
+/// Keeps every log request in memory. For tests and for in-app inspection.
+class InMemoryLogTransport implements LogTransport {
+  /// Everything sent so far, oldest first.
+  final List<pb.ExportLogsServiceRequest> requests = [];
+
+  /// All log records sent so far, flattened.
+  List<pb.LogRecord> get records => [
+        for (final r in requests)
+          for (final rl in r.resourceLogs)
+            for (final sl in rl.scopeLogs) ...sl.logRecords,
+      ];
+
+  /// Whether [send] reports success.
+  bool succeed = true;
+
+  @override
+  Future<bool> send(pb.ExportLogsServiceRequest request) async {
+    requests.add(request.deepCopy());
+    return succeed;
+  }
+
+  @override
+  Future<void> close() async {}
+}

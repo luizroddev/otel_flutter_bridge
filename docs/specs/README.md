@@ -1,8 +1,7 @@
 # Specifications
 
 Short specs written before the code of each part. They guide implementation
-(including AI-assisted work) and are what anyone evaluating the library
-reviews.
+and are what anyone evaluating the library reviews.
 
 | Spec | Decides | Needed before |
 |---|---|---|
@@ -12,7 +11,8 @@ reviews.
 | [redaction.md](redaction.md) | Allowlist, scrubbing rules, extra rules, what happens to the rest | M2 |
 | [failure-and-limits.md](failure-and-limits.md) | Telemetry never breaks the app; queue sizes; what is dropped first | M2 |
 | [native-bridge.md](native-bridge.md) | Native → Dart batch format and version, batch size, pre-ready queue | M3 |
+| [journey.md](journey.md) | Journey data contract: screens, flows, actions, outcomes, user and device, as OTLP logs and spans | M9 |
 
 **Status of all specs: draft.** The values below are the ones implemented and
 tested; each "Open question" is a decision for the maintainer, not for code
-review or AI.
+review.

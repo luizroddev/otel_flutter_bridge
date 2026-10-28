@@ -45,9 +45,9 @@ void main() {
     });
 
     test('allows the app. prefix by default', () {
-      final span = spanWith([kv('app.screen', 'home')]);
+      final span = spanWith([kv('app.screen.name', 'home')]);
       redactor.redactSpan(span);
-      expect(attrsOf(span), {'app.screen': 'home'});
+      expect(attrsOf(span), {'app.screen.name': 'home'});
     });
 
     test('custom prefixes and keys come from config', () {
@@ -120,7 +120,7 @@ void main() {
                       ),
                     ],
                     links: [
-                      pb.Span_Link(attributes: [kv('user.id', '42')]),
+                      pb.Span_Link(attributes: [kv('user.email', 'a')]),
                     ],
                   ),
                 ],

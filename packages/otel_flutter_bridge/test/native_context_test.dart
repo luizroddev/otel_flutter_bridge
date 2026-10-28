@@ -126,9 +126,9 @@ void main() {
       expect(_hex(sync.traceId), traceId);
       expect(_hex(sync.parentSpanId), parentId);
       expect(parse.parentSpanId, sync.spanId);
-      expect(attrs(sync), containsPair('app.screen', 'Orders'));
-      expect(attrs(sync), containsPair('app.flow', 'orders'));
-      expect(attrs(parse), containsPair('app.screen', 'Orders'));
+      expect(attrs(sync), containsPair('app.screen.name', 'Orders'));
+      expect(attrs(sync), containsPair('app.flow.name', 'orders'));
+      expect(attrs(parse), containsPair('app.screen.name', 'Orders'));
     });
 
     test('without context, just runs; malformed context is ignored', () async {
@@ -199,7 +199,7 @@ void main() {
       expect(_hex(server.parentSpanId), parentId);
       expect(child.parentSpanId, server.spanId);
       expect(attrs(server), containsPair('rpc.method', 'cartUpdated'));
-      expect(attrs(child), containsPair('app.screen', 'Orders'));
+      expect(attrs(child), containsPair('app.screen.name', 'Orders'));
     });
 
     test('errors mark the span and reach native code', () async {
