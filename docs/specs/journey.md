@@ -35,24 +35,36 @@ shipped. `label` is optional readable text for the dashboard.
 | `session.id` | every span and event | The session, shared by Dart and native |
 | `user.id` | every span and event, when set | Opaque user id (`Journey.setUser`); absent before login |
 | `app.flow.instance_id` | spans and events inside a flow run | One run of a flow, such as one login attempt |
+| `app.flow.parent_instance_id` | `app.flow.start` / `app.flow.end` of a nested run | The run that was current when this one started |
 | `app.action.instance_id` | the action's span and event | One run of an action |
 | `trace_id`, `span_id` | spans; events inside a span | The technical tree of an operation |
+| `log.record.uid` | every event | Unique id of the event, to drop resends |
 
 A session has many flow runs and traces. A flow run can span several
 traces. No span stays open while the user is on a screen.
 
 `session.id`, `user.id`, screen and flow are read **when the span or event
 starts**: renewing the session or logging out later never changes what
-already happened.
+already happened. For `Journey.track`, both the span and its event carry the
+context of when the body started.
+
+## Nested flows
+
+A flow started while another is current is nested (a token activation
+inside a login). It becomes the current flow; its start and end events carry
+`app.flow.parent_instance_id`; ending it makes the outer flow current again.
+Starting a flow never ends the current one, and ending the outer flow first
+leaves the inner one current.
 
 ## Events (log records)
 
 Every event has `severity_number` INFO, no body, `time_unix_nano` of when it
-happened, and these attributes:
+happened, the OTLP `event_name` field, and these attributes:
 
 | Attribute | Always |
 |---|---|
-| `event.name` | yes |
+| `event.name` | yes (same value as `event_name`, for older readers) |
+| `log.record.uid` | yes |
 | `session.id` | yes |
 | `otel_flutter_bridge.source` | yes (`dart` or `native`) |
 | `user.id` | when set |
@@ -119,8 +131,9 @@ A receiver (a collector, a BFF, the journey dashboard) should:
 - Store `session.id`, `user.id`, `device.id`, `event.name`, the flow and
   action ids and the trace ids as indexed fields, and keep the rest of the
   record as received.
-- Read `event.name` from the attribute (this library) or from the OTLP
-  `event_name` field (newer SDKs).
+- Read the OTLP `event_name` field, falling back to the `event.name`
+  attribute.
+- Deduplicate events by `log.record.uid` and spans by trace and span id.
 
 ## Open questions
 

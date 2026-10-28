@@ -18,16 +18,20 @@ Map<String, Object?> withTraceContext(
   Context? context,
 ]) {
   final args = <String, Object?>{...?arguments};
-  final ctx = context ?? Context.current;
-  final traceparent = Traceparent.fromContext(ctx);
-  if (traceparent != null) {
-    final app = appContextOf(ctx.span);
-    args[channelContextKey] = {
-      Traceparent.header: traceparent,
-      if (app?.screen != null) appScreenKey: app!.screen,
-      if (app?.flow != null) appFlowKey: app!.flow,
-      if (app?.flowId != null) appFlowInstanceKey: app!.flowId,
-    };
+  try {
+    final ctx = context ?? Context.current;
+    final traceparent = Traceparent.fromContext(ctx);
+    if (traceparent != null) {
+      final app = appContextOf(ctx.span);
+      args[channelContextKey] = {
+        Traceparent.header: traceparent,
+        if (app?.screen != null) appScreenKey: app!.screen,
+        if (app?.flow != null) appFlowKey: app!.flow,
+        if (app?.flowId != null) appFlowInstanceKey: app!.flowId,
+      };
+    }
+  } catch (_) {
+    // Telemetry never breaks the app: send the arguments as they are.
   }
   return args;
 }
@@ -87,32 +91,62 @@ extension TracedMethodChannel on MethodChannel {
   ///
   /// [arguments] must be a map (or null), because the context travels as an
   /// extra key in it.
+  ///
+  /// Never fails because of telemetry: before `OtelFlutterBridge.initialize`,
+  /// or if the SDK fails, the call goes out untraced with [arguments] as
+  /// they are. Errors of the call itself mark the span and are rethrown with
+  /// their original stack trace.
   Future<T?> invokeTraced<T>(
     String method, {
     Map<String, Object?>? arguments,
     Tracer? tracer,
   }) async {
-    final t = tracer ?? OTel.tracer();
-    final span = t.startSpan(
-      '$name/$method',
-      kind: SpanKind.client,
-      attributes: OTel.attributesFromMap({
-        'rpc.system': rpcSystemFlutterChannel,
-        'rpc.service': name,
-        'rpc.method': method,
-      }),
-    );
+    Tracer? t;
+    Span? span;
     try {
-      return await t.withSpanAsync(
-        span,
-        () => invokeMethod<T>(method, withTraceContext(arguments)),
+      t = tracer ?? OTel.tracer();
+      span = t.startSpan(
+        '$name/$method',
+        kind: SpanKind.client,
+        attributes: OTel.attributesFromMap({
+          'rpc.system': rpcSystemFlutterChannel,
+          'rpc.service': name,
+          'rpc.method': method,
+        }),
       );
-    } catch (e) {
-      markSpanError(span, e);
-      rethrow;
-    } finally {
-      span.end();
+    } catch (_) {
+      // Telemetry never breaks the app: call untraced.
     }
+    if (t == null || span == null) return invokeMethod<T>(method, arguments);
+
+    final s = span;
+    // The call's error is caught inside the span and rethrown outside it, so
+    // a telemetry failure around the call can never replace or hide it.
+    Object? error;
+    StackTrace? stackTrace;
+    T? result;
+    var ran = false;
+    try {
+      await t.withSpanAsync(s, () async {
+        ran = true;
+        try {
+          result = await invokeMethod<T>(method, withTraceContext(arguments));
+        } catch (e, st) {
+          error = e;
+          stackTrace = st;
+        }
+      });
+    } catch (_) {
+      if (!ran) {
+        _endQuietly(s);
+        return invokeMethod<T>(method, arguments);
+      }
+    }
+    final e = error;
+    if (e != null) markSpanError(s, e);
+    _endQuietly(s);
+    if (e != null) Error.throwWithStackTrace(e, stackTrace!);
+    return result;
   }
 
   /// [setMethodCallHandler] where each call from native code is a server
@@ -163,5 +197,13 @@ extension TracedMethodChannel on MethodChannel {
         }
       }),
     );
+  }
+}
+
+void _endQuietly(Span span) {
+  try {
+    span.end();
+  } catch (_) {
+    // Telemetry never breaks the app.
   }
 }

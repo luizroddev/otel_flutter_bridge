@@ -25,6 +25,16 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
   conventions) / `app.flow.name`, on both sides of the channel.
 - Example app: scenario 10, a fictional shop journey (login retry and
   purchase).
+- Nested flows: a flow started inside another becomes current, records
+  `app.flow.parent_instance_id`, and ending it makes the outer flow current
+  again (previously the context was cleared).
+- `Journey.track`: the event carries the screen, flow, user and session of
+  when the body started, like the span (previously those of the end).
+- Journey events carry `log.record.uid` and the OTLP `event_name` field.
+- `invokeTraced` never fails because of telemetry: before `initialize`, or
+  if the SDK fails, the call goes out untraced.
+- `os.type` / `os.name` follow the semantic conventions (`darwin` / `iOS`,
+  `linux` / `Android`); previously `os.type` was `ios` or `android`.
 
 ## 0.1.0-dev.3
 
