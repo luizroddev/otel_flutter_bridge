@@ -43,35 +43,51 @@ mixin JourneyScreen on Enum {
   /// Stable code sent as `app.screen.name`.
   String get code => name;
 
-  /// Readable label sent as `app.screen.label`, or null.
+  /// Readable label sent as `journey.screen.label`, or null.
   String? get label => null;
 }
 
 /// A flow: a journey across screens, such as login or checkout. Mix it into
 /// an enum, like [JourneyScreen].
 mixin JourneyFlow on Enum {
-  /// Stable code sent as `app.flow.name`.
+  /// Stable code sent as `journey.flow.name`.
   String get code => name;
 
-  /// Readable label sent as `app.flow.label`, or null.
+  /// Readable label sent as `journey.flow.label`, or null.
   String? get label => null;
 }
 
 /// Something the user does that matters: choose, send, confirm, cancel,
 /// retry. Mix it into an enum, like [JourneyScreen].
 mixin JourneyAction on Enum {
-  /// Stable code sent as `app.action.name`, and the span name of
+  /// Stable code sent as `journey.action.name`, and the span name of
   /// `Journey.track`.
   String get code => name;
 
-  /// Readable label sent as `app.action.label`, or null.
+  /// Readable label sent as `journey.action.label`, or null.
   String? get label => null;
 }
 
-/// Extra attributes of a journey event. Keys should be under `app.` (they
-/// pass through redaction like any other attribute). Values may be strings,
-/// booleans, numbers or enums (sent as their name); anything else is
-/// dropped.
+/// Why an action or a flow run ended the way it did, such as a wrong
+/// password or a blocked account. Mix it into an enum, like
+/// [JourneyScreen]:
+///
+/// ```dart
+/// enum LoginReason with JourneyReason { invalidPassword, blockedAccount }
+/// ```
+///
+/// Sent as `journey.outcome_reason` next to `journey.outcome`, so the
+/// dashboard can count failures by reason. A fixed list keeps it readable;
+/// never put error text or ids here.
+mixin JourneyReason on Enum {
+  /// Stable code sent as `journey.outcome_reason`.
+  String get code => name;
+}
+
+/// Extra attributes of a journey event. Keys must be allowed by redaction
+/// (by default, keys under `app.`); never use the library's `journey.`
+/// namespace. Values may be strings, booleans, numbers or enums (sent as
+/// their name); anything else is dropped.
 typedef JourneyAttributes = Map<String, Object?>;
 
 /// One run of a flow, from `Journey.startFlow` to [end].
@@ -90,11 +106,11 @@ class JourneyFlowRun {
   /// The flow's label, or null.
   final String? label;
 
-  /// Random id of this run, sent as `app.flow.instance_id`.
+  /// Random id of this run, sent as `journey.flow.instance_id`.
   final String instanceId;
 
   /// The run that was current when this one started, or null. Sent as
-  /// `app.flow.parent_instance_id`.
+  /// `journey.flow.parent_instance_id`.
   final String? parentInstanceId;
 
   final DateTime _start;
@@ -103,24 +119,29 @@ class JourneyFlowRun {
   /// Whether [end] was called.
   bool get isEnded => _ended;
 
-  /// Ends the run with [outcome]. Only the first call counts. When this is
-  /// the current flow, the flow it was nested in (if any, and not ended)
-  /// becomes current again.
-  void end([
-    JourneyOutcome outcome = JourneyOutcome.completed,
+  /// Ends the run with [outcome] and, optionally, the [reason] for it. Only
+  /// the first call counts. When this is the current flow, the flow it was
+  /// nested in (if any, and not ended) becomes current again.
+  ///
+  /// Use [JourneyOutcome.completed] when the app cannot tell whether the
+  /// flow worked.
+  void end(
+    JourneyOutcome outcome, {
+    JourneyReason? reason,
     JourneyAttributes attributes = const {},
-  ]) {
+  }) {
     if (_ended) return;
     _ended = true;
     Journey._emit(
       eventFlowEnd,
       {
-        appFlowKey: code,
-        appFlowLabelKey: label,
-        appFlowInstanceKey: instanceId,
-        appFlowParentInstanceKey: parentInstanceId,
-        appOutcomeKey: outcome.name,
-        appDurationKey: DateTime.now().difference(_start).inMilliseconds,
+        journeyFlowKey: code,
+        journeyFlowLabelKey: label,
+        journeyFlowInstanceKey: instanceId,
+        journeyFlowParentInstanceKey: parentInstanceId,
+        journeyOutcomeKey: outcome.name,
+        journeyOutcomeReasonKey: reason?.code,
+        journeyDurationKey: DateTime.now().difference(_start).inMilliseconds,
         ...attributes,
       },
     );
@@ -137,7 +158,8 @@ class JourneyFlowRun {
 /// Journey.event(AppAction.chooseBiometric);
 /// final ok = await Journey.track(AppAction.confirmLogin, auth.login,
 ///     outcome: (ok) => ok ? JourneyOutcome.success : JourneyOutcome.failure);
-/// login.end(ok ? JourneyOutcome.success : JourneyOutcome.failure);
+/// login.end(ok ? JourneyOutcome.success : JourneyOutcome.failure,
+///     reason: ok ? null : LoginReason.invalidPassword);
 /// ```
 ///
 /// Never throws because of telemetry. Before `OtelFlutterBridge.initialize`
@@ -160,7 +182,7 @@ abstract final class Journey {
   static JourneyFlowRun? get currentFlow => _flows.isEmpty ? null : _flows.last;
 
   /// The user entered [screen]. Sets the current screen and records an
-  /// `app.screen.view` event.
+  /// `journey.screen.view` event.
   static void screen(
     JourneyScreen screen, {
     JourneyAttributes attributes = const {},
@@ -174,16 +196,16 @@ abstract final class Journey {
     JourneyAttributes attributes = const {},
   }) {
     AppContext.screen = code;
-    _emit(eventScreenView, {appScreenLabelKey: label, ...attributes});
+    _emit(eventScreenView, {journeyScreenLabelKey: label, ...attributes});
   }
 
   /// Starts a run of [flow] and makes it the current flow. Records an
-  /// `app.flow.start` event. End it with [JourneyFlowRun.end]; a run never
+  /// `journey.flow.start` event. End it with [JourneyFlowRun.end]; a run never
   /// ended shows as "no conclusion", not as abandoned.
   ///
   /// A flow started while another one is current is nested (for example a
   /// token activation inside a login): its events carry
-  /// `app.flow.parent_instance_id`, and ending it makes the outer flow
+  /// `journey.flow.parent_instance_id`, and ending it makes the outer flow
   /// current again. Starting a flow never ends the current one.
   static JourneyFlowRun startFlow(
     JourneyFlow flow, {
@@ -200,8 +222,8 @@ abstract final class Journey {
     AppContext.flow = run.code;
     AppContext.flowInstanceId = run.instanceId;
     _emit(eventFlowStart, {
-      appFlowLabelKey: run.label,
-      appFlowParentInstanceKey: run.parentInstanceId,
+      journeyFlowLabelKey: run.label,
+      journeyFlowParentInstanceKey: run.parentInstanceId,
       ...attributes,
     });
     return run;
@@ -219,28 +241,43 @@ abstract final class Journey {
   }
 
   /// Records an instant [action], such as choosing an option. No span and
-  /// no duration. [outcome] is optional: an instant choice has none.
+  /// no duration. [outcome] and [reason] are optional: an instant choice has
+  /// none.
   static void event(
     JourneyAction action, {
     JourneyOutcome? outcome,
+    JourneyReason? reason,
     JourneyAttributes attributes = const {},
   }) {
     _emit(eventAction, {
-      appActionKey: action.code,
-      appActionLabelKey: action.label,
-      appActionInstanceKey: newSessionId(_random),
-      appOutcomeKey: outcome?.name,
+      journeyActionKey: action.code,
+      journeyActionLabelKey: action.label,
+      journeyActionInstanceKey: newSessionId(_random),
+      journeyOutcomeKey: outcome?.name,
+      journeyOutcomeReasonKey: reason?.code,
       ...attributes,
+    });
+  }
+
+  /// Records a `session.start` event (OpenTelemetry session conventions)
+  /// for session [id], following [previousId] when known. The built-in
+  /// session rules call it; call it from a custom `SessionIdProvider` when
+  /// it starts a session.
+  static void sessionStarted(String id, {String? previousId}) {
+    _emit(eventSessionStart, {
+      sessionIdKey: id,
+      if (previousId != id) sessionPreviousIdKey: previousId,
     });
   }
 
   /// Runs [body] once as [action]: a span named after the action (active
   /// while [body] runs, so HTTP and channel calls inside become its
-  /// children) and an `app.action` event with duration and outcome, linked
+  /// children) and an `journey.action` event with duration and outcome, linked
   /// to the span's trace.
   ///
   /// The outcome is [outcome] applied to the result, or
-  /// [JourneyOutcome.completed] when not given. When [body] throws, the
+  /// [JourneyOutcome.completed] when not given; [reason] applied to the
+  /// result gives `journey.outcome_reason`. When [body] throws, the
   /// outcome is [JourneyOutcome.failure] with `error.type` (from
   /// [errorType] or a fixed name for common types), never the error text,
   /// and the same error is rethrown with its stack trace.
@@ -252,6 +289,7 @@ abstract final class Journey {
     JourneyAction action,
     FutureOr<T> Function() body, {
     JourneyOutcome Function(T result)? outcome,
+    JourneyReason? Function(T result)? reason,
     JourneyAttributes attributes = const {},
     String Function(Object error)? errorType,
   }) async {
@@ -272,9 +310,9 @@ abstract final class Journey {
     final start = DateTime.now();
     final at = recorder?.snapshot();
     final attrs = <String, Object?>{
-      appActionKey: action.code,
-      appActionLabelKey: action.label,
-      appActionInstanceKey: instanceId,
+      journeyActionKey: action.code,
+      journeyActionLabelKey: action.label,
+      journeyActionInstanceKey: instanceId,
       ...attributes,
     };
     _setAll(span, attrs);
@@ -305,6 +343,7 @@ abstract final class Journey {
     final e = error;
     var result0 = JourneyOutcome.completed;
     String? type;
+    String? why;
     if (e != null) {
       result0 = JourneyOutcome.failure;
       try {
@@ -314,9 +353,10 @@ abstract final class Journey {
       }
       type ??= errorTypeOf(e);
       markSpanError(span, e, type: type);
-    } else if (outcome != null) {
+    } else {
       try {
-        result0 = outcome(result);
+        if (outcome != null) result0 = outcome(result);
+        why = reason?.call(result)?.code;
       } catch (_) {
         // Telemetry never breaks the app.
       }
@@ -329,7 +369,8 @@ abstract final class Journey {
       }
     }
     try {
-      span.setStringAttribute(appOutcomeKey, result0.name);
+      span.setStringAttribute(journeyOutcomeKey, result0.name);
+      if (why != null) span.setStringAttribute(journeyOutcomeReasonKey, why);
     } catch (_) {
       // Telemetry never breaks the app.
     }
@@ -338,8 +379,9 @@ abstract final class Journey {
       eventAction,
       {
         ...attrs,
-        appOutcomeKey: result0.name,
-        appDurationKey: DateTime.now().difference(start).inMilliseconds,
+        journeyOutcomeKey: result0.name,
+        journeyOutcomeReasonKey: why,
+        journeyDurationKey: DateTime.now().difference(start).inMilliseconds,
         if (type != null) 'error.type': type,
       },
       span: span,
@@ -481,8 +523,8 @@ class JourneyRecorder {
       sessionIdKey: now.sessionId,
       userIdKey: now.userId,
       appScreenKey: ctx.screen,
-      appFlowKey: ctx.flow,
-      appFlowInstanceKey: ctx.flowId,
+      journeyFlowKey: ctx.flow,
+      journeyFlowInstanceKey: ctx.flowId,
       bridgeSourceKey: bridgeSourceDart,
       ...attributes,
     };

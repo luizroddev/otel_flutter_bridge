@@ -11,7 +11,7 @@ the library without forking it.
 | `RedactionConfig` | `OtelBridgeConfig.redaction` | Extra allowed keys and prefixes, extra patterns |
 | `TraceTransport` | `initialize(transport:)` | Send through the app's HTTP stack (pinning, proxy, auth); tee to another sink. `TeeTransport` and `InMemoryTransport` included |
 | `SpanEnricher` | `initialize(enrichers:)` | Add attributes to every span (Dart and native) before redaction, at export time: values fixed for the session, e.g. `app.tenant` |
-| `AppContext.screen` / `.flow` | anywhere (navigation) | Stamp `app.screen.name` / `app.flow.name` on every Dart span when it starts; children copy their parent |
+| `AppContext.screen` / `.flow` | anywhere (navigation) | Stamp `app.screen.name` / `journey.flow.name` on every Dart span when it starts; children copy their parent |
 | `SessionIdProvider` | `initialize(sessionIdProvider:)` | Reuse an existing, non-identifying session id |
 | `DiagnosticListener` | `initialize(onDiagnostic:)` | Log internal problems in the app's logger |
 | `spanProcessors` | `initialize(spanProcessors:)` | Extra OTel SDK processors (see spans **before** redaction: debug only) |
@@ -35,7 +35,7 @@ the library without forking it.
 | `startSpan(_:arguments:)` / `extractContext(from:)` / `withTraceContext(_:span:)` | Advanced: manual control of the channel helpers |
 | `HTTPClientSpan.start` → `call.finish(response:error:) { }` and `propagateTo` | One client span per request for any HTTP stack; the continuation runs in the requester's trace |
 | `bind(closure)` / `task { }` / `TraceContext.with` / `.current` | Carry the current span through stored callbacks and `async` code |
-| `appContext.screen` / `.flow` | Stamp `app.screen.name` / `app.flow.name` on native spans at start |
+| `appContext.screen` / `.flow` | Stamp `app.screen.name` / `journey.flow.name` on native spans at start |
 | `TracedURLSession.data(for:)` / `dataTask(with:)` | The same, for plain `URLSession` calls |
 | `PendingSpanQueue` | Tune capacity or inspect `droppedCount` |
 

@@ -12,7 +12,7 @@ class OtelBridgeConfig {
     required this.endpoint,
     this.serviceVersion,
     this.deploymentEnvironment,
-    this.deviceId,
+    this.installationId,
     this.exportLogs = true,
     this.enabled = true,
     this.sampleRatio = 1.0,
@@ -34,6 +34,7 @@ class OtelBridgeConfig {
       endpoint: endpoint ?? Uri(),
       serviceVersion: _string(map['serviceVersion']),
       deploymentEnvironment: _string(map['deploymentEnvironment']),
+      installationId: _string(map['installationId']),
       exportLogs: _bool(map['exportLogs']) ?? true,
       enabled: _bool(map['enabled']) ?? true,
       sampleRatio: (_num(map['sampleRatio']) ?? 1.0).toDouble().clamp(0, 1),
@@ -57,10 +58,16 @@ class OtelBridgeConfig {
   /// `deployment.environment.name`, for example `staging` or `production`.
   final String? deploymentEnvironment;
 
-  /// `device.id`: an id of this installation or device that the app already
-  /// has. Sent as a resource attribute on spans and journey events, so the
-  /// dashboard can find a device's sessions. Use an opaque id.
-  final String? deviceId;
+  /// `app.installation.id`: one installation of the app. Sent as a resource
+  /// attribute on spans and journey events, so a receiver can find the
+  /// sessions of one installation. On iOS use `identifierForVendor`;
+  /// elsewhere a random UUID the app keeps. Never a hardware id (serial
+  /// number, IMEI, MAC address).
+  ///
+  /// The library never sends `device.id`: a receiver that knows the device
+  /// (from the request it authenticates) stamps it itself. See
+  /// `docs/specs/journey.md`.
+  final String? installationId;
 
   /// Whether journey events (`Journey`) are sent as OTLP logs to
   /// [logsEndpoint]. Turn it off when the destination takes traces only

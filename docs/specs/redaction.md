@@ -17,9 +17,11 @@ not even hashed.
 Allowed by default (`defaultAllowedAttributes`): `service.name`,
 `service.version`, `service.namespace`, `deployment.environment.name`,
 `telemetry.sdk.*` (name, language, version), `os.type`, `os.name`,
-`os.version`, `device.model.identifier`, `device.manufacturer`, `device.id`,
-`session.id`, `user.id`, `event.name`, the journey keys (`app.screen.*`,
-`app.flow.*`, `app.action.*`, `app.outcome`, `app.duration_ms`),
+`os.version`, `device.model.identifier`, `device.manufacturer`,
+`app.installation.id`, `session.id`, `session.previous_id`, `user.id`,
+`event.name`, `log.record.uid`, `app.screen.name` and the journey keys
+(`journey.screen.label`, `journey.flow.*`, `journey.action.*`,
+`journey.outcome`, `journey.outcome_reason`, `journey.duration_ms`),
 `http.request.method`, `http.response.status_code`, `http.route`,
 `url.scheme`, `url.path`, `server.address`, `server.port`,
 `network.protocol.version`, `error.type`, `exception.type`,
@@ -29,8 +31,10 @@ Allowed by default (`defaultAllowedAttributes`): `service.name`,
 Plus every key under an allowed prefix (default: `app.`).
 
 Deliberately **not** allowed: `url.full`, `url.query`, `http.request.header.*`,
-`http.response.header.*`, `exception.stacktrace`, `user.*`, `enduser.*`,
-`host.*`, `process.*`, `client.address`.
+`http.response.header.*`, `exception.stacktrace`, `user.*` (other than
+`user.id`), `enduser.*`, `device.id`, `host.*`, `process.*`,
+`client.address`. `device.id` is for a receiver to stamp from the request
+it authenticates (see [journey.md](journey.md#receivers)).
 
 ## 2. Scrubbing
 
@@ -67,12 +71,14 @@ resource attributes that describe the app and device (`service.*`,
 come from configuration or the OS and scrubbing would corrupt them (a build
 number is a digit run).
 
-Also trusted: `user.id` and `device.id`, ids the app passes on purpose
-(`Journey.setUser`, `OtelBridgeConfig.deviceId`), and the journey values the
-library generates (`event.name`, `log.record.uid`, `app.flow.instance_id`,
-`app.flow.parent_instance_id`, `app.action.instance_id`, `app.outcome`). A numeric user id would otherwise
-be redacted as a document number. The app must pass opaque ids there, never
-an e-mail or a document.
+Also trusted: `user.id` and `app.installation.id`, ids the app passes on
+purpose (`Journey.setUser`, `OtelBridgeConfig.installationId`), and the
+values the library generates (`session.previous_id`, `event.name`,
+`log.record.uid`, `journey.flow.instance_id`,
+`journey.flow.parent_instance_id`, `journey.action.instance_id`,
+`journey.outcome`). A numeric user id would otherwise be redacted as a
+document number, and about half of all random 32-hex ids have a run of 6
+or more digits. The app must pass opaque ids there, never an e-mail or a document.
 
 Journey events are log records: their body is always removed and only their
 attributes are sent, through the same allowlist and scrubbing.

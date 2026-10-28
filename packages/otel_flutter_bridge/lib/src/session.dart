@@ -25,18 +25,39 @@ class SessionManager implements SessionIdProvider {
   DateTime? _startedAt;
   DateTime? _lastActivity;
 
+  /// Called right after a session starts, with its id and the id of the
+  /// session it follows (null for the first one and after [reset]).
+  /// `initialize` uses it to record the `session.start` event.
+  void Function(String id, String? previousId)? onStart;
+
   /// The current session id. Starts a new session when there is none, when
   /// the last activity is older than the inactivity timeout, or when the
   /// session reached its maximum duration. Each call counts as activity.
   @override
   String get currentId {
     final now = _clock();
-    if (_id == null || _isExpired(now)) _start(now);
+    String? previous;
+    var started = false;
+    if (_id == null || _isExpired(now)) {
+      previous = _id;
+      _start(now);
+      started = true;
+    }
     _lastActivity = now;
-    return _id!;
+    final id = _id!;
+    if (started) {
+      try {
+        onStart?.call(id, previous);
+      } catch (_) {
+        // Telemetry never breaks the app.
+      }
+    }
+    return id;
   }
 
-  /// Ends the current session. The next [currentId] starts a new one.
+  /// Ends the current session. The next [currentId] starts a new one, with
+  /// no previous session: after a logout the next session may be another
+  /// person's.
   void reset() {
     _id = null;
     _startedAt = null;

@@ -52,7 +52,8 @@ abstract final class OtelFlutterBridge {
   /// - [logTransport] replaces the default OTLP/HTTP sender of journey
   ///   events (`Journey`). Ignored when `config.exportLogs` is false.
   /// - [enrichers] add attributes to every span before redaction.
-  /// - [sessionIdProvider] replaces the built-in session rules.
+  /// - [sessionIdProvider] replaces the built-in session rules. It should
+  ///   call `Journey.sessionStarted` when it starts a session.
   /// - [onDiagnostic] receives internal problems (no span data).
   /// - [spanProcessors] are extra SDK processors, for example to mirror
   ///   spans somewhere during development. They see spans before redaction.
@@ -76,7 +77,8 @@ abstract final class OtelFlutterBridge {
           'service.version': config.serviceVersion!,
         if (config.deploymentEnvironment != null)
           'deployment.environment.name': config.deploymentEnvironment!,
-        if (config.deviceId != null) deviceIdKey: config.deviceId!,
+        if (config.installationId != null)
+          appInstallationIdKey: config.installationId!,
         ..._platformAttributes(),
         ...config.resourceAttributes,
       };
@@ -153,6 +155,10 @@ abstract final class OtelFlutterBridge {
           maxBatchSize: config.limits.maxSpansPerExport,
         ),
       );
+      if (session is SessionManager) {
+        session.onStart =
+            (id, previous) => Journey.sessionStarted(id, previousId: previous);
+      }
 
       if (connectNative) {
         _native = NativeBridge(

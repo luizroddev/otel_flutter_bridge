@@ -70,8 +70,8 @@ Both directions use the same key in the call arguments (a map):
 "_otel": {
   "traceparent": "<W3C value>",   // required
   "app.screen.name": "<string>",      // optional, the sender span's screen
-  "app.flow.name": "<string>",        // optional, the sender span's flow
-  "app.flow.instance_id": "<string>"  // optional, the sender span's flow run
+  "journey.flow.name": "<string>",        // optional, the sender span's flow
+  "journey.flow.instance_id": "<string>"  // optional, the sender span's flow run
 }
 ```
 

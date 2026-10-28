@@ -46,8 +46,10 @@ class RedactionConfig {
   /// Attribute keys allowed on top of the default allowlist.
   final Set<String> allowedAttributes;
 
-  /// Key prefixes whose attributes are allowed. Defaults to `app.`, the
-  /// namespace reserved for the app's own attributes.
+  /// Key prefixes whose attributes are allowed. Defaults to `app.`, so the
+  /// app's own attributes work without configuration. `app.` is also an
+  /// OpenTelemetry namespace, which advises a prefix of your own (`shop.`):
+  /// add it here. See `docs/specs/naming.md`.
   final Set<String> allowedPrefixes;
 
   /// Extra regular expressions. Every match in a string value is replaced by
@@ -77,24 +79,26 @@ const defaultAllowedAttributes = <String>{
   'os.version',
   'device.model.identifier',
   'device.manufacturer',
-  deviceIdKey,
+  appInstallationIdKey,
   // Session, user and app context.
   sessionIdKey,
+  sessionPreviousIdKey,
   userIdKey,
   appScreenKey,
-  appFlowKey,
+  journeyFlowKey,
   // Journey events.
   eventNameKey,
   logRecordUidKey,
-  appFlowParentInstanceKey,
-  appScreenLabelKey,
-  appFlowLabelKey,
-  appFlowInstanceKey,
-  appActionKey,
-  appActionLabelKey,
-  appActionInstanceKey,
-  appOutcomeKey,
-  appDurationKey,
+  journeyFlowParentInstanceKey,
+  journeyScreenLabelKey,
+  journeyFlowLabelKey,
+  journeyFlowInstanceKey,
+  journeyActionKey,
+  journeyActionLabelKey,
+  journeyActionInstanceKey,
+  journeyOutcomeKey,
+  journeyOutcomeReasonKey,
+  journeyDurationKey,
   // HTTP client.
   'http.request.method',
   'http.response.status_code',
@@ -121,19 +125,20 @@ const defaultAllowedAttributes = <String>{
 /// which come from configuration or the OS, never from the user. Scrubbing
 /// would only corrupt them (a version or build number is a digit run).
 ///
-/// `user.id` and `device.id` come from the app and are trusted to be opaque
-/// ids: scrubbing would corrupt numeric ids. Never pass an e-mail or a
-/// document number there.
+/// `user.id` and `app.installation.id` come from the app and are trusted to
+/// be opaque ids: scrubbing would corrupt numeric ids. Never pass an e-mail
+/// or a document number there.
 const trustedAttributes = <String>{
   sessionIdKey,
+  sessionPreviousIdKey,
   userIdKey,
-  deviceIdKey,
+  appInstallationIdKey,
   eventNameKey,
   logRecordUidKey,
-  appFlowInstanceKey,
-  appFlowParentInstanceKey,
-  appActionInstanceKey,
-  appOutcomeKey,
+  journeyFlowInstanceKey,
+  journeyFlowParentInstanceKey,
+  journeyActionInstanceKey,
+  journeyOutcomeKey,
   bridgeSourceKey,
   'service.name',
   'service.version',

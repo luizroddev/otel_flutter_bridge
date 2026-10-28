@@ -3,7 +3,7 @@ import Foundation
 /// Attribute keys shared with Dart (`lib/src/semantics.dart`).
 public enum AppContextKeys {
   public static let screen = "app.screen.name"
-  public static let flow = "app.flow.name"
+  public static let flow = "journey.flow.name"
 }
 
 /// The screen and flow a span was started in.

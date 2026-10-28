@@ -34,6 +34,8 @@ enum TAction with JourneyAction {
 
 enum Method { biometric, password }
 
+enum TReason with JourneyReason { invalidPassword, blockedAccount }
+
 class FixedSession implements SessionIdProvider {
   String id = 's1';
   @override
@@ -50,7 +52,7 @@ void main() {
         OtelBridgeConfig(
           serviceName: 'shop',
           endpoint: Uri.parse('http://x'),
-          deviceId: 'device-1',
+          installationId: 'install-1',
           exportLogs: exportLogs,
         ),
         transport: traces,
@@ -100,33 +102,35 @@ void main() {
 
     final e = events();
     expect(e.map((a) => a['event.name']), [
-      'app.screen.view',
-      'app.flow.start',
-      'app.action',
-      'app.flow.end',
+      'journey.screen.view',
+      'journey.flow.start',
+      'journey.action',
+      'journey.flow.end',
     ]);
     expect(e[0], containsPair('app.screen.name', 'login'));
-    expect(e[0], containsPair('app.screen.label', 'Login'));
+    expect(e[0], containsPair('journey.screen.label', 'Login'));
     for (final a in e) {
       expect(a, containsPair('session.id', 's1'));
       expect(a, containsPair('user.id', 'u-42'));
       expect(a, containsPair('otel_flutter_bridge.source', 'dart'));
     }
-    final id = e[1]['app.flow.instance_id'];
+    final id = e[1]['journey.flow.instance_id'];
     expect(id, isA<String>());
     expect((id! as String).length, 32);
-    expect(e[2], containsPair('app.flow.instance_id', id));
-    expect(e[2], containsPair('app.action.name', 'chooseBiometric'));
+    expect(e[2], containsPair('journey.flow.instance_id', id));
+    expect(e[2], containsPair('journey.action.name', 'chooseBiometric'));
     expect(e[2], containsPair('app.login.method', 'biometric'));
-    expect(e[2].containsKey('app.outcome'), isFalse);
-    expect(e[3], containsPair('app.outcome', 'success'));
-    expect(e[3], containsPair('app.flow.instance_id', id));
-    expect(e[3]['app.duration_ms'], isA<int>());
+    expect(e[2].containsKey('journey.outcome'), isFalse);
+    expect(e[3], containsPair('journey.outcome', 'success'));
+    expect(e[3], containsPair('journey.flow.instance_id', id));
+    expect(e[3]['journey.duration_ms'], isA<int>());
 
     final resource =
         attrsOf(logs.requests.first.resourceLogs.first.resource.attributes);
     expect(resource, containsPair('service.name', 'shop'));
-    expect(resource, containsPair('device.id', 'device-1'));
+    expect(resource, containsPair('app.installation.id', 'install-1'));
+    // The library never sends device.id: a receiver stamps it.
+    expect(resource.containsKey('device.id'), isFalse);
     // An instant event outside any span has no trace.
     expect(logs.records.first.traceId, isEmpty);
     // Body is never sent.
@@ -155,29 +159,30 @@ void main() {
     expect(http0.parentSpanId, action.spanId);
     expect(action.status.code, pb.Status_StatusCode.STATUS_CODE_ERROR);
     final a = spanAttrs('confirmLogin');
-    expect(a, containsPair('app.action.name', 'confirmLogin'));
-    expect(a, containsPair('app.outcome', 'failure'));
+    expect(a, containsPair('journey.action.name', 'confirmLogin'));
+    expect(a, containsPair('journey.outcome', 'failure'));
     expect(a, containsPair('app.screen.name', 'login'));
-    expect(a, containsPair('app.flow.instance_id', run.instanceId));
+    expect(a, containsPair('journey.flow.instance_id', run.instanceId));
     expect(a, containsPair('session.id', 's1'));
 
     final rec = logs.records.singleWhere(
-        (r) => attrsOf(r.attributes)['event.name'] == 'app.action');
+        (r) => attrsOf(r.attributes)['event.name'] == 'journey.action');
     expect(rec.traceId, action.traceId);
     expect(rec.spanId, action.spanId);
     final e = attrsOf(rec.attributes);
-    expect(e, containsPair('app.outcome', 'failure'));
-    expect(e, containsPair('app.action.label', 'Confirmar login'));
-    expect(e['app.action.instance_id'], a['app.action.instance_id']);
-    expect(e['app.duration_ms'], isA<int>());
+    expect(e, containsPair('journey.outcome', 'failure'));
+    expect(e, containsPair('journey.action.label', 'Confirmar login'));
+    expect(e['journey.action.instance_id'], a['journey.action.instance_id']);
+    expect(e['journey.duration_ms'], isA<int>());
   });
 
   test('track without outcome is completed, not success', () async {
     await init();
     await Journey.track(TAction.confirmLogin, () {});
     await OtelFlutterBridge.flush();
-    expect(spanAttrs('confirmLogin'), containsPair('app.outcome', 'completed'));
-    expect(events().single, containsPair('app.outcome', 'completed'));
+    expect(spanAttrs('confirmLogin'),
+        containsPair('journey.outcome', 'completed'));
+    expect(events().single, containsPair('journey.outcome', 'completed'));
   });
 
   test('track rethrows the same error, records only its type', () async {
@@ -192,7 +197,7 @@ void main() {
     expect(caught, same(error));
     await OtelFlutterBridge.flush();
     final e = events().single;
-    expect(e, containsPair('app.outcome', 'failure'));
+    expect(e, containsPair('journey.outcome', 'failure'));
     expect(e, containsPair('error.type', 'StateError'));
     expect(
         e.values.whereType<String>().any((v) => v.contains('secret')), isFalse);
@@ -206,8 +211,8 @@ void main() {
     });
     await OtelFlutterBridge.flush();
     final span = traces.spans.single;
-    final inner = logs.records.firstWhere(
-        (r) => attrsOf(r.attributes)['app.action.name'] == 'chooseBiometric');
+    final inner = logs.records.firstWhere((r) =>
+        attrsOf(r.attributes)['journey.action.name'] == 'chooseBiometric');
     expect(inner.traceId, span.traceId);
   });
 
@@ -226,7 +231,7 @@ void main() {
     final run = Journey.startFlow(TFlow.login);
     expect(Journey.currentFlow, same(run));
     run
-      ..end()
+      ..end(JourneyOutcome.completed)
       ..end(JourneyOutcome.failure); // only the first call counts
     expect(AppContext.flow, isNull);
     expect(Journey.currentFlow, isNull);
@@ -234,10 +239,139 @@ void main() {
     Journey.screen(TScreen.home);
     await OtelFlutterBridge.flush();
     final e = events();
-    expect(e.where((a) => a['event.name'] == 'app.flow.end'), hasLength(1));
-    expect(e[1], containsPair('app.outcome', 'completed'));
+    expect(e.where((a) => a['event.name'] == 'journey.flow.end'), hasLength(1));
+    expect(e[1], containsPair('journey.outcome', 'completed'));
     expect(e.last.containsKey('user.id'), isFalse);
-    expect(e.last.containsKey('app.flow.name'), isFalse);
+    expect(e.last.containsKey('journey.flow.name'), isFalse);
+  });
+
+  test('reason: on flow end, instant event and track', () async {
+    await init();
+    final run = Journey.startFlow(TFlow.login);
+    Journey.event(TAction.chooseBiometric,
+        outcome: JourneyOutcome.failure, reason: TReason.blockedAccount);
+    await Journey.track(TAction.confirmLogin, () async => false,
+        outcome: (ok) => ok ? JourneyOutcome.success : JourneyOutcome.failure,
+        reason: (ok) => ok ? null : TReason.invalidPassword);
+    run.end(JourneyOutcome.failure, reason: TReason.invalidPassword);
+    await OtelFlutterBridge.flush();
+
+    final e = events();
+    Map<String, Object?> action(String name) =>
+        e.singleWhere((a) => a['journey.action.name'] == name);
+    expect(action('chooseBiometric'),
+        containsPair('journey.outcome_reason', 'blockedAccount'));
+    expect(action('confirmLogin'),
+        containsPair('journey.outcome_reason', 'invalidPassword'));
+    expect(spanAttrs('confirmLogin'),
+        containsPair('journey.outcome_reason', 'invalidPassword'));
+    final end = e.singleWhere((a) => a['event.name'] == 'journey.flow.end');
+    expect(end, containsPair('journey.outcome', 'failure'));
+    expect(end, containsPair('journey.outcome_reason', 'invalidPassword'));
+    expect(e.first.containsKey('journey.outcome_reason'), isFalse);
+  });
+
+  test('session.start: first session, then renewal with previous_id', () async {
+    var now = DateTime(2026, 1, 1, 10);
+    final sessions = SessionManager(
+      const SessionConfig(inactivityTimeout: Duration(minutes: 30)),
+      clock: () => now,
+    );
+    await OtelFlutterBridge.initialize(
+      OtelBridgeConfig(serviceName: 'shop', endpoint: Uri.parse('http://x')),
+      transport: traces,
+      logTransport: logs,
+      sessionIdProvider: sessions,
+      connectNative: false,
+      scheduleDelay: const Duration(milliseconds: 10),
+    );
+    Journey.screen(TScreen.home);
+    now = now.add(const Duration(minutes: 31));
+    Journey.screen(TScreen.login);
+    await OtelFlutterBridge.flush();
+
+    final e = events();
+    expect(e.map((a) => a['event.name']), [
+      'session.start',
+      'journey.screen.view',
+      'session.start',
+      'journey.screen.view',
+    ]);
+    final first = e[0]['session.id'];
+    final second = e[2]['session.id'];
+    expect(first, isNot(second));
+    expect(e[0].containsKey('session.previous_id'), isFalse);
+    expect(e[1], containsPair('session.id', first));
+    expect(e[2], containsPair('session.previous_id', first));
+    expect(e[3], containsPair('session.id', second));
+  });
+
+  test('sessionStarted never links a session to itself', () async {
+    await init();
+    Journey.sessionStarted('s1', previousId: 's1');
+    await OtelFlutterBridge.flush();
+    final e = events().single;
+    expect(e, containsPair('event.name', 'session.start'));
+    expect(e.containsKey('session.previous_id'), isFalse);
+  });
+
+  test('the data contract keeps its names', () {
+    // Receivers (a backend allowlist, the dashboard) depend on these exact
+    // strings. Changing one is a breaking change of docs/specs/journey.md.
+    expect({
+      sessionIdKey,
+      sessionPreviousIdKey,
+      userIdKey,
+      appInstallationIdKey,
+      eventNameKey,
+      logRecordUidKey,
+      appScreenKey,
+      journeyScreenLabelKey,
+      journeyFlowKey,
+      journeyFlowLabelKey,
+      journeyFlowInstanceKey,
+      journeyFlowParentInstanceKey,
+      journeyActionKey,
+      journeyActionLabelKey,
+      journeyActionInstanceKey,
+      journeyOutcomeKey,
+      journeyOutcomeReasonKey,
+      journeyDurationKey,
+      bridgeSourceKey,
+    }, {
+      'session.id',
+      'session.previous_id',
+      'user.id',
+      'app.installation.id',
+      'event.name',
+      'log.record.uid',
+      'app.screen.name',
+      'journey.screen.label',
+      'journey.flow.name',
+      'journey.flow.label',
+      'journey.flow.instance_id',
+      'journey.flow.parent_instance_id',
+      'journey.action.name',
+      'journey.action.label',
+      'journey.action.instance_id',
+      'journey.outcome',
+      'journey.outcome_reason',
+      'journey.duration_ms',
+      'otel_flutter_bridge.source',
+    });
+    expect([
+      eventScreenView,
+      eventFlowStart,
+      eventFlowEnd,
+      eventAction,
+      eventSessionStart,
+    ], [
+      'journey.screen.view',
+      'journey.flow.start',
+      'journey.flow.end',
+      'journey.action',
+      'session.start',
+    ]);
   });
 
   test('exportLogs false: no events, spans still flow', () async {
@@ -275,26 +409,29 @@ void main() {
     await OtelFlutterBridge.flush();
 
     final e = events();
-    final starts = e.where((a) => a['event.name'] == 'app.flow.start').toList();
-    expect(starts.first.containsKey('app.flow.parent_instance_id'), isFalse);
-    expect(starts.last['app.flow.parent_instance_id'], login.instanceId);
-    final ends = e.where((a) => a['event.name'] == 'app.flow.end').toList();
-    expect(ends.first['app.flow.parent_instance_id'], login.instanceId);
+    final starts =
+        e.where((a) => a['event.name'] == 'journey.flow.start').toList();
+    expect(
+        starts.first.containsKey('journey.flow.parent_instance_id'), isFalse);
+    expect(starts.last['journey.flow.parent_instance_id'], login.instanceId);
+    final ends = e.where((a) => a['event.name'] == 'journey.flow.end').toList();
+    expect(ends.first['journey.flow.parent_instance_id'], login.instanceId);
     Map<String, Object?> action(String name) =>
-        e.singleWhere((a) => a['app.action.name'] == name);
-    expect(action('chooseBiometric')['app.flow.instance_id'],
+        e.singleWhere((a) => a['journey.action.name'] == name);
+    expect(action('chooseBiometric')['journey.flow.instance_id'],
         activation.instanceId);
-    expect(action('confirmLogin')['app.flow.instance_id'], login.instanceId);
+    expect(
+        action('confirmLogin')['journey.flow.instance_id'], login.instanceId);
   });
 
   test('ending the outer flow first keeps the inner one current', () async {
     await init();
     final login = Journey.startFlow(TFlow.login);
     final activation = Journey.startFlow(TFlow.activation);
-    login.end();
+    login.end(JourneyOutcome.completed);
     expect(Journey.currentFlow, same(activation));
     expect(AppContext.flowInstanceId, activation.instanceId);
-    activation.end();
+    activation.end(JourneyOutcome.completed);
     expect(Journey.currentFlow, isNull);
   });
 
@@ -305,15 +442,15 @@ void main() {
     await Journey.track(TAction.confirmLogin, () async {
       Journey.screen(TScreen.home); // navigated while it ran
       Journey.setUser('u-9'); // logged in while it ran
-      run.end();
+      run.end(JourneyOutcome.success);
       session.id = 's2'; // session renewed while it ran
     });
     await OtelFlutterBridge.flush();
     final e = events().singleWhere((a) =>
-        a['event.name'] == 'app.action' &&
-        a['app.action.name'] == 'confirmLogin');
+        a['event.name'] == 'journey.action' &&
+        a['journey.action.name'] == 'confirmLogin');
     expect(e, containsPair('app.screen.name', 'login'));
-    expect(e, containsPair('app.flow.instance_id', run.instanceId));
+    expect(e, containsPair('journey.flow.instance_id', run.instanceId));
     expect(e, containsPair('session.id', 's1'));
     expect(e.containsKey('user.id'), isFalse);
     final span = spanAttrs('confirmLogin');
@@ -341,7 +478,7 @@ void main() {
       for (final r in decoded.resourceLogs.single.scopeLogs.single.logRecords)
         utf8.decode(r.unknownFields.getField(12)!.lengthDelimited.single),
     ];
-    expect(names, ['app.screen.view', 'app.action']);
+    expect(names, ['journey.screen.view', 'journey.action']);
   });
 
   test('os.type and os.name follow the semantic conventions', () {
