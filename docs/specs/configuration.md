@@ -30,6 +30,8 @@ Native side: `OtelFlutterBridge.shared.start(...)` in
 | `session` | `session` | see [session.md](session.md) | |
 | `limits` | `limits` | see [failure-and-limits.md](failure-and-limits.md) | |
 | `exportTimeout` | `exportTimeoutMs` | 10 s | Per request |
+| `sendThroughNative` | `sendThroughNative` | `false` | Send through the native app's network stack (`exportHandler` in Swift) instead of Dart's HTTP client. See [native-bridge.md](native-bridge.md#sending-through-the-apps-network-stack) |
+| `gzip` | `gzip` | `false` | Compress bodies (`Content-Encoding: gzip`, part of OTLP/HTTP); the receiver must accept it |
 
 ## Extension points (code only, not remote)
 

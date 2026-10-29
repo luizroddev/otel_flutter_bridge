@@ -9,7 +9,8 @@ the library without forking it.
 |---|---|---|
 | `OtelBridgeConfig` / `fromMap` | `initialize` | Names, endpoint, sampling, limits, remote config |
 | `RedactionConfig` | `OtelBridgeConfig.redaction` | Extra allowed keys and prefixes, extra patterns |
-| `TraceTransport` | `initialize(transport:)` | Send through the app's HTTP stack (pinning, proxy, auth); tee to another sink. `TeeTransport` and `InMemoryTransport` included |
+| `TraceTransport` / `LogTransport` | `initialize(transport:, logTransport:)` | Send somewhere else; tee to another sink. `TeeTransport` and `InMemoryTransport` included. To send through the native app's network stack, use `sendThroughNative` instead |
+| `OtelBridgeConfig.sendThroughNative` | config | Send through the native app's network stack (pinning, gateway headers, mutual TLS); the Swift `exportHandler` sends |
 | `SpanEnricher` | `initialize(enrichers:)` | Add attributes to every span (Dart and native) before redaction, at export time: values fixed for the session, e.g. `app.tenant` |
 | `AppContext.screen` / `.flow` | anywhere (navigation) | Stamp `app.screen.name` / `journey.flow.name` on every Dart span when it starts; children copy their parent |
 | `SessionIdProvider` | `initialize(sessionIdProvider:)` | Reuse an existing, non-identifying session id |
@@ -37,7 +38,11 @@ the library without forking it.
 | `bind(closure)` / `task { }` / `TraceContext.with` / `.current` | Carry the current span through stored callbacks and `async` code |
 | `appContext.screen` / `.flow` | Stamp `app.screen.name` / `journey.flow.name` on native spans at start |
 | `TracedURLSession.data(for:)` / `dataTask(with:)` | The same, for plain `URLSession` calls |
-| `PendingSpanQueue` | Tune capacity or inspect `droppedCount` |
+| `PendingSpanQueue` / `PendingEventQueue` | Tune capacity or inspect `droppedCount` |
+| `exportHandler` | Send telemetry through the app's own network stack (with `sendThroughNative` in Dart); `TelemetryExport.urlRequest()` builds the request, never traced |
+| `markAsTelemetry()` | Mark a request the app builds for telemetry so `HTTPClientSpan` does not trace it |
+| `Journey` (`screen`, `startFlow`, `flowRun`, `event`, `begin`, `track`, `setUser`) | The journey on native screens, shared with Dart |
+| `setSession(id:previousId:)` | Let the native app own the session (Dart: `SessionConfig(fromHost: true)`) |
 
 ## Rule for any extension
 

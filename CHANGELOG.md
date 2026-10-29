@@ -77,6 +77,14 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
 - iOS: `device.app.lifecycle` events with `ios.app.state` (`background`,
   `foreground`, `terminate`), so the journey shows when the user left the
   app and came back.
+- `OtelBridgeConfig.sendThroughNative`: requests go through the native
+  app's own network stack (certificate pinning, gateway headers, mutual
+  TLS) with `OtelFlutterBridge.shared.exportHandler` in Swift
+  (`NativeTraceTransport` / `NativeLogTransport`, `export` on the channel).
+  `TelemetryExport.urlRequest()` builds the request; requests marked with
+  `markAsTelemetry()` are never traced by `HTTPClientSpan`.
+- `OtelBridgeConfig.gzip`: compressed request bodies
+  (`Content-Encoding: gzip`), on both transports.
 
 ## 0.1.0-dev.3
 

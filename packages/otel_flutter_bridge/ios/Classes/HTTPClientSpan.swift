@@ -19,7 +19,8 @@ import OpenTelemetryApi
 /// the status code (4xx/5xx) or the error type (`URLError.timedOut`). The
 /// connection type (`network.connection.type`: wifi, cell, unavailable) is
 /// recorded once `OtelFlutterBridge.start` ran. No swizzling: only requests
-/// that go through here are traced.
+/// that go through here are traced, and requests marked as telemetry
+/// (`markAsTelemetry`) never are.
 public enum HTTPClientSpan {
   /// Hosts that receive `traceparent`. Empty means all. Set it so trace ids
   /// are not sent to third parties.
@@ -33,6 +34,12 @@ public enum HTTPClientSpan {
   /// a traced channel handler, `task`, `bind`), else none.
   public static func start(_ request: URLRequest, parent: SpanContext? = nil) -> HTTPClientCall {
     let caller = TraceContext.current
+    // The library's own export (`TelemetryExport`): never traced, or each
+    // export would make a span to export.
+    if request.isTelemetry {
+      let span = DefaultTracer.instance.spanBuilder(spanName: "telemetry").setNoParent().startSpan()
+      return HTTPClientCall(span: span, request: request, caller: caller)
+    }
     let method = HTTPSemantics.method(request.httpMethod)
     let url = request.url
     let builder = OtelFlutterBridge.shared.tracer()

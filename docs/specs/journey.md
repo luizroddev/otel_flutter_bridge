@@ -207,7 +207,9 @@ instrumented. Readers must not call it abandoned.
 
 ## Transport
 
-- OTLP/HTTP, protobuf, `POST {endpoint}/v1/traces` and `{endpoint}/v1/logs`.
+- OTLP/HTTP, protobuf, `POST {endpoint}/v1/traces` and `{endpoint}/v1/logs`,
+  gzip compressed with `OtelBridgeConfig.gzip`. With `sendThroughNative`,
+  the native app sends them through its own network stack.
 - Journey events are sent when `OtelBridgeConfig.exportLogs` is true (the
   default). Turn it off for destinations that only take traces.
 - Events are batched with the same delay as spans and limited to

@@ -103,6 +103,13 @@ session.request(call.request).validate().responseData { response in
 // Native → Flutter, in the same trace (Dart: setTracedMethodCallHandler).
 channel.invokeTraced("cartUpdated")
 
+// Optional: send telemetry through the app's own network stack
+// (Dart: OtelBridgeConfig(sendThroughNative: true)).
+OtelFlutterBridge.shared.exportHandler = { export, completion in
+  guard let request = export.urlRequest() else { return completion(false) }
+  apiClient.send(request) { response in completion(response.isSuccess) }
+}
+
 // Native screens: the same journey API, shared with Dart.
 enum AppScreen: String, JourneyScreen { case address }
 enum AppFlow: String, JourneyFlow { case checkout }

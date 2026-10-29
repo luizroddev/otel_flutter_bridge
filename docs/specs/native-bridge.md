@@ -15,6 +15,7 @@ One `MethodChannel` named `otel_flutter_bridge`, standard codec.
 | native → Dart | `exportEvents` | event batch (below) | `{accepted: int, rejected: int}` |
 | both | `journey` | one change of the journey state (below) | `null` |
 | native → Dart | `flush` | none | `null`, once Dart sent everything pending |
+| Dart → native | `export` | `{signal, url, headers, body}` (below) | `true` when the server accepted it |
 
 ## Batch format, version 1
 
@@ -108,6 +109,39 @@ run = { "code", "label"?, "instanceId", "parentInstanceId"?, "startUnixNano": <i
 Unknown ops and malformed fields are ignored. Native sends from the main
 thread right away, so Dart has a change before the reply of a channel call
 made after it.
+
+## Sending through the app's network stack
+
+With `OtelBridgeConfig(sendThroughNative: true)`, Dart does not open HTTP
+connections. Each OTLP request goes to native code with `export`:
+
+```
+{
+  "signal": "traces" | "logs",
+  "url": "<endpoint>/v1/<signal>",
+  "headers": { "Content-Type": "application/x-protobuf", "Content-Encoding": "gzip"?, ...config headers },
+  "body": <bytes>                     // the encoded request, compressed when gzip is on
+}
+```
+
+The app sends it with its own stack (certificate pinning, gateway headers,
+mutual TLS) in `OtelFlutterBridge.shared.exportHandler`:
+
+```swift
+OtelFlutterBridge.shared.exportHandler = { export, completion in
+  guard let request = export.urlRequest() else { return completion(false) }
+  apiClient.send(request) { response in completion(response.isSuccess) }
+}
+```
+
+- `export.urlRequest(endpoint:)` builds the `POST`, to the URL Dart
+  derived or to the app's own endpoint.
+- It is marked as telemetry (a `URLProtocol` property, never sent), and
+  `HTTPClientSpan` does not trace marked requests. Without that, each
+  export would create a span to export. Requests the app builds itself are
+  marked with `markAsTelemetry()`.
+- `completion(true)` means the server accepted it (2xx). No handler, a
+  refusal or no reply within `exportTimeout` count as a failed export.
 
 ## Dart side
 

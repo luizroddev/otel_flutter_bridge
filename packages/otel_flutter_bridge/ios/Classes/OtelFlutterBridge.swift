@@ -28,6 +28,7 @@ public final class OtelFlutterBridge: @unchecked Sendable {
   private let journeyLock = NSLock()
   private var journeySink: (([String: Any]) -> Void)?
   private var dartFlush: ((@escaping () -> Void) -> Void)?
+  private var _exportHandler: ((TelemetryExport, @escaping (Bool) -> Void) -> Void)?
 
   private init() {}
 
@@ -202,6 +203,35 @@ public final class OtelFlutterBridge: @unchecked Sendable {
     args[TraceparentCodec.channelContextKey] = TraceparentCodec.channelContext(
       traceparent: traceparent, app: appContext.values(forSpanId: ctx.spanId.hexString))
     return args
+  }
+
+  /// Sends telemetry through the app's own network stack, when Dart has
+  /// `OtelBridgeConfig(sendThroughNative: true)`. Called with each OTLP
+  /// request; call `completion(true)` when the server accepted it (2xx),
+  /// `false` otherwise, once, from any thread. Without a handler, those
+  /// requests fail.
+  ///
+  /// ```swift
+  /// OtelFlutterBridge.shared.exportHandler = { export, completion in
+  ///   guard let request = export.urlRequest() else { return completion(false) }
+  ///   apiClient.send(request) { response in completion(response.isSuccess) }
+  /// }
+  /// ```
+  ///
+  /// `export.urlRequest()` is marked as telemetry, so `HTTPClientSpan`
+  /// never traces it; mark requests you build yourself with
+  /// `markAsTelemetry()`.
+  public var exportHandler: ((TelemetryExport, @escaping (Bool) -> Void) -> Void)? {
+    get {
+      journeyLock.lock()
+      defer { journeyLock.unlock() }
+      return _exportHandler
+    }
+    set {
+      journeyLock.lock()
+      _exportHandler = newValue
+      journeyLock.unlock()
+    }
   }
 
   /// Hands pending native spans and events to Dart now. Dart sends them

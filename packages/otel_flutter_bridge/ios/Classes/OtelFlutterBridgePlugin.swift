@@ -59,6 +59,23 @@ public class OtelFlutterBridgePlugin: NSObject, FlutterPlugin {
     case "journey":
       JourneySync.apply(call.arguments, to: bridge.appContext)
       result(nil)
+    case "export":
+      guard let handler = bridge.exportHandler,
+            let signal = args["signal"] as? String,
+            let body = (args["body"] as? FlutterStandardTypedData)?.data
+      else {
+        result(false)
+        return
+      }
+      let export = TelemetryExport(signal: signal,
+                                   url: (args["url"] as? String).flatMap { URL(string: $0) },
+                                   headers: args["headers"] as? [String: String] ?? [:],
+                                   body: body)
+      let replied = OnceFlag()
+      handler(export) { ok in
+        guard replied.claim() else { return }
+        DispatchQueue.main.async { result(ok) }
+      }
     default:
       result(FlutterMethodNotImplemented)
     }
