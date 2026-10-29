@@ -32,15 +32,57 @@ public enum HTTPSemantics {
   /// validation error, such as Alamofire's `validate()`), otherwise the
   /// error's type, otherwise nil.
   ///
-  /// Errors bridged from Objective-C (every `URLSession` error) report their
-  /// dynamic type as `NSError`, so `URLError` is named explicitly and other
-  /// bridged errors use their domain, which is low cardinality.
+  /// A `URLError` keeps its code, so a timeout, no connection and a failed
+  /// certificate check are told apart: `URLError.timedOut`,
+  /// `URLError.notConnectedToInternet`, `URLError.-1234` for a code without
+  /// a name here. Other errors bridged from Objective-C report their
+  /// dynamic type as `NSError`, so they use their domain, which is low
+  /// cardinality.
   public static func errorType(statusCode: Int?, error: Error?) -> String? {
     if let statusCode, statusCode >= 400 { return String(statusCode) }
     guard let error else { return nil }
-    if error is URLError { return "URLError" }
+    if let urlError = error as? URLError {
+      let code = urlError.code.rawValue
+      return "URLError." + (urlErrorNames[code] ?? String(code))
+    }
     let name = String(describing: type(of: error))
     if name == "NSError" || name.hasPrefix("__") { return (error as NSError).domain }
     return name
   }
+
+  /// Names of the `URLError` codes an app meets in practice.
+  static let urlErrorNames: [Int: String] = [
+    URLError.Code.cancelled.rawValue: "cancelled",
+    URLError.Code.badURL.rawValue: "badURL",
+    URLError.Code.timedOut.rawValue: "timedOut",
+    URLError.Code.unsupportedURL.rawValue: "unsupportedURL",
+    URLError.Code.cannotFindHost.rawValue: "cannotFindHost",
+    URLError.Code.cannotConnectToHost.rawValue: "cannotConnectToHost",
+    URLError.Code.networkConnectionLost.rawValue: "networkConnectionLost",
+    URLError.Code.dnsLookupFailed.rawValue: "dnsLookupFailed",
+    URLError.Code.httpTooManyRedirects.rawValue: "httpTooManyRedirects",
+    URLError.Code.resourceUnavailable.rawValue: "resourceUnavailable",
+    URLError.Code.notConnectedToInternet.rawValue: "notConnectedToInternet",
+    URLError.Code.badServerResponse.rawValue: "badServerResponse",
+    URLError.Code.userCancelledAuthentication.rawValue: "userCancelledAuthentication",
+    URLError.Code.userAuthenticationRequired.rawValue: "userAuthenticationRequired",
+    URLError.Code.zeroByteResource.rawValue: "zeroByteResource",
+    URLError.Code.cannotDecodeRawData.rawValue: "cannotDecodeRawData",
+    URLError.Code.cannotDecodeContentData.rawValue: "cannotDecodeContentData",
+    URLError.Code.cannotParseResponse.rawValue: "cannotParseResponse",
+    URLError.Code.appTransportSecurityRequiresSecureConnection.rawValue:
+      "appTransportSecurityRequiresSecureConnection",
+    URLError.Code.internationalRoamingOff.rawValue: "internationalRoamingOff",
+    URLError.Code.callIsActive.rawValue: "callIsActive",
+    URLError.Code.dataNotAllowed.rawValue: "dataNotAllowed",
+    URLError.Code.secureConnectionFailed.rawValue: "secureConnectionFailed",
+    URLError.Code.serverCertificateHasBadDate.rawValue: "serverCertificateHasBadDate",
+    URLError.Code.serverCertificateUntrusted.rawValue: "serverCertificateUntrusted",
+    URLError.Code.serverCertificateHasUnknownRoot.rawValue: "serverCertificateHasUnknownRoot",
+    URLError.Code.serverCertificateNotYetValid.rawValue: "serverCertificateNotYetValid",
+    URLError.Code.clientCertificateRejected.rawValue: "clientCertificateRejected",
+    URLError.Code.clientCertificateRequired.rawValue: "clientCertificateRequired",
+    URLError.Code.cannotLoadFromNetwork.rawValue: "cannotLoadFromNetwork",
+    URLError.Code.backgroundSessionWasDisconnected.rawValue: "backgroundSessionWasDisconnected",
+  ]
 }

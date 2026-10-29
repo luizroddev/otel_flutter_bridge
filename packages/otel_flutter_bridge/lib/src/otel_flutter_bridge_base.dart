@@ -53,7 +53,8 @@ abstract final class OtelFlutterBridge {
   ///   events (`Journey`). Ignored when `config.exportLogs` is false.
   /// - [enrichers] add attributes to every span before redaction.
   /// - [sessionIdProvider] replaces the built-in session rules. It should
-  ///   call `Journey.sessionStarted` when it starts a session.
+  ///   call `Journey.sessionStarted` when it starts a session. To follow
+  ///   the native app's session, set `SessionConfig.fromHost` instead.
   /// - [onDiagnostic] receives internal problems (no span data).
   /// - [spanProcessors] are extra SDK processors, for example to mirror
   ///   spans somewhere during development. They see spans before redaction.
@@ -70,7 +71,11 @@ abstract final class OtelFlutterBridge {
   }) async {
     if (isInitialized) return;
     try {
-      final session = sessionIdProvider ?? SessionManager(config.session);
+      final own =
+          sessionIdProvider == null ? SessionManager(config.session) : null;
+      final host =
+          own != null && config.session.fromHost ? HostSession(own) : null;
+      final SessionIdProvider session = host ?? sessionIdProvider ?? own!;
       final resource = <String, Object>{
         'service.name': config.serviceName,
         if (config.serviceVersion != null)
@@ -155,8 +160,9 @@ abstract final class OtelFlutterBridge {
           maxBatchSize: config.limits.maxSpansPerExport,
         ),
       );
-      if (session is SessionManager) {
-        session.onStart =
+      final rules = own ?? sessionIdProvider;
+      if (rules is SessionManager) {
+        rules.onStart =
             (id, previous) => Journey.sessionStarted(id, previousId: previous);
       }
 
@@ -164,6 +170,7 @@ abstract final class OtelFlutterBridge {
         _native = NativeBridge(
           pipeline,
           onDiagnostic: onDiagnostic,
+          hostSession: host,
           sampleRatio: config.sampleRatio,
         );
         await _native!.connect(

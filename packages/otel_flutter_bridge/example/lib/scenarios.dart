@@ -138,7 +138,27 @@ final scenarios = <Scenario>[
         'depois uma compra. Eventos saem como logs OTLP (OTEL_LOGS=true).',
     runShopJourney,
   ),
+  const Scenario(
+    '11. Jornada com tela nativa',
+    'A compra começa no Flutter e termina numa tela nativa (Journey em '
+        'Swift): mesma execução do fluxo nos dois lados.',
+    _runMixedJourney,
+  ),
 ];
+
+Future<String> _runMixedJourney() async {
+  Journey.screen(ShopScreen.cart);
+  final checkout = Journey.startFlow(ShopFlow.checkout);
+  try {
+    await nativeChannel.invokeTraced<String>('nativeAddress');
+  } on MissingPluginException {
+    checkout.end(JourneyOutcome.cancelled);
+    return 'Sem lado nativo: rode no iOS';
+  }
+  return checkout.isEnded
+      ? 'Compra concluída na tela nativa'
+      : 'A tela nativa não encerrou o fluxo';
+}
 
 /// Calls from native code: each one continues the native trace.
 void listenToNative() {

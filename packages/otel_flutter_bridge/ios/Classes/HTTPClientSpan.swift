@@ -16,7 +16,9 @@ import OpenTelemetryApi
 ///
 /// Same rules as Dart (`OtelHttpClient`): only method, host, port, scheme
 /// and path are recorded; custom methods become `_OTHER`; `error.type` is
-/// the status code (4xx/5xx) or the error type. No swizzling: only requests
+/// the status code (4xx/5xx) or the error type (`URLError.timedOut`). The
+/// connection type (`network.connection.type`: wifi, cell, unavailable) is
+/// recorded once `OtelFlutterBridge.start` ran. No swizzling: only requests
 /// that go through here are traced.
 public enum HTTPClientSpan {
   /// Hosts that receive `traceparent`. Empty means all. Set it so trace ids
@@ -46,6 +48,9 @@ public enum HTTPClientSpan {
     if let host = url?.host { builder.setAttribute(key: "server.address", value: host) }
     if let port = url?.port { builder.setAttribute(key: "server.port", value: port) }
     if let scheme = url?.scheme { builder.setAttribute(key: "url.scheme", value: scheme) }
+    if let network = NetworkStatus.shared.connectionType {
+      builder.setAttribute(key: "network.connection.type", value: network)
+    }
     let span = builder.startSpan()
 
     var traced = request

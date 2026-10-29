@@ -127,10 +127,11 @@ class SessionConfig {
   const SessionConfig({
     this.inactivityTimeout = const Duration(minutes: 30),
     this.maxDuration = const Duration(hours: 4),
+    this.fromHost = false,
   });
 
-  /// Reads the rules from a map with `inactivityTimeoutMs` and
-  /// `maxDurationMs`.
+  /// Reads the rules from a map with `inactivityTimeoutMs`,
+  /// `maxDurationMs` and `fromHost`.
   factory SessionConfig.fromMap(Map<String, Object?> map) {
     const defaults = SessionConfig();
     return SessionConfig(
@@ -139,8 +140,15 @@ class SessionConfig {
         defaults.inactivityTimeout,
       ),
       maxDuration: _duration(map['maxDurationMs'], defaults.maxDuration),
+      fromHost: _bool(map['fromHost']) ?? defaults.fromHost,
     );
   }
+
+  /// Whether the native app owns the session: it starts and renews it and
+  /// tells the library with `OtelFlutterBridge.shared.setSession` (Swift),
+  /// and Dart follows. Until the native side sends one, the rules above
+  /// apply. See `docs/specs/session.md`.
+  final bool fromHost;
 
   /// A new session starts after this long without any span.
   final Duration inactivityTimeout;

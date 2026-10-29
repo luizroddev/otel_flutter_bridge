@@ -1,6 +1,7 @@
 # Spec: journey
 
 Status: draft · Contract version 2 · Implemented in `lib/src/journey.dart`
+(Dart) and `ios/Classes/Journey.swift` (Swift)
 
 The journey is what the user did in a session: screens seen, flows started
 and ended, actions taken and how each ended. It is plain OpenTelemetry:
@@ -43,12 +44,54 @@ run.end(JourneyOutcome.failure, reason: LoginReason.invalidPassword);
 shipped: renaming an enum value renames its code. Override `code` to keep
 the old one. `label` is optional readable text for the dashboard.
 
+### Native screens (Swift)
+
+The same API exists in Swift, for screens and actions that are native.
+Codes are the raw values of `String` enums:
+
+```swift
+enum AppScreen: String, JourneyScreen { case document }
+enum AppFlow: String, JourneyFlow { case login }
+enum AppAction: String, JourneyAction { case confirmLogin }
+enum LoginReason: String, JourneyReason { case invalidPassword }
+
+Journey.screen(AppScreen.document)
+let run = Journey.startFlow(AppFlow.login)
+let action = Journey.begin(AppAction.confirmLogin)  // span + event
+TraceContext.with(action.span) {
+  api.login { result in
+    action.end(result.ok ? .success : .failure, reason: result.reason)
+  }
+}
+Journey.flowRun(AppFlow.login)?.end(.success)
+```
+
+Native code is mostly callback based, so a measured action is `begin`
+and `end` (an async `Journey.track` also exists). Swift events are recorded
+where they happen, with the context of that moment, and reach the Dart
+pipeline through the channel: same redaction, same destination.
+
+### One journey across both sides
+
+The current screen, the open flow runs and the user are **shared** by Swift
+and Dart. Each side applies a change locally and sends it to the other
+(`journey` on the channel, see [native-bridge.md](native-bridge.md)):
+
+- A flow started on a native screen is the current flow of Flutter spans
+  and events too, and the other way round.
+- Either side can end a run (`Journey.flowRun(flow)?.end(...)`); only the
+  first end counts, on both sides.
+- `Journey.setUser` on either side sets `user.id` for both.
+
+When both sides change the state at the same instant, the last change to
+arrive wins; user-driven navigation never does this in practice.
+
 ## Identities
 
 | Key | Where | Meaning |
 |---|---|---|
 | `app.installation.id` | resource | One installation of the app (`OtelBridgeConfig.installationId`; on iOS, `identifierForVendor`) |
-| `session.id` | every span and event | The session, shared by Dart and native |
+| `session.id` | every span and event | The session, shared by Dart and native; the native app's own when it owns it ([session.md](session.md)) |
 | `user.id` | every span and event, when set | Opaque user id (`Journey.setUser`); absent before login |
 | `journey.flow.instance_id` | spans and events inside a flow run | One run of a flow, such as one login attempt |
 | `journey.flow.parent_instance_id` | `journey.flow.start` / `journey.flow.end` of a nested run | The run that was current when this one started |
@@ -132,7 +175,14 @@ context attributes. On failure the status is `ERROR`, with `error.type`
 when an exception was thrown (never its text).
 
 Spans created with the plain OpenTelemetry API carry the same context
-attributes (screen, flow, flow run, user, session) from when they started.
+attributes (screen, flow, flow run, user, session) from when they started,
+on both sides.
+
+`error.type` of a native network failure keeps the `URLError` code
+(`URLError.timedOut`, `URLError.notConnectedToInternet`,
+`URLError.serverCertificateUntrusted`), so a timeout, no connection and a
+failed certificate check are told apart. Native HTTP spans also carry
+`network.connection.type` (`wifi`, `cell`, `unavailable`).
 
 ## Outcomes and reasons
 
@@ -177,7 +227,7 @@ breaks in silence.
 |---|---|
 | Resource attributes | `service.name`, `service.version`, `deployment.environment.name`, `os.type`, `os.name`, `os.version`, `device.model.identifier`, `device.manufacturer`, `app.installation.id`, `telemetry.sdk.*` |
 | Event names | `session.start`, `journey.screen.view`, `journey.flow.start`, `journey.flow.end`, `journey.action` |
-| Event and span attributes | everything in the tables above, plus the HTTP, RPC and error keys of [redaction.md](redaction.md) and the app's own keys |
+| Event and span attributes | everything in the tables above, plus the HTTP, RPC, `network.connection.type` and error keys of [redaction.md](redaction.md) and the app's own keys |
 | Span names | action codes chosen by the app, `{METHOD}` for HTTP, `{channel}/{method}` for channel calls. Match them with a pattern (for example `^[A-Za-z0-9_.:/-]{1,128}$`) rather than a fixed list, or every new action is rejected |
 
 ### Never scrub ids
@@ -221,5 +271,5 @@ links. Do not scrub the values of `session.id`, `session.previous_id`,
 
 ## Open questions
 
-- Native (Swift) journey API with the same contract.
 - Whether events should follow the sampling of their trace.
+- Native Android journey API (no native Android bridge yet).

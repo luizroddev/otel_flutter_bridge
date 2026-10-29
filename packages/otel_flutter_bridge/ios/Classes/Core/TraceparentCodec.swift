@@ -38,15 +38,17 @@ public enum TraceparentCodec {
     return parse(ctx[header] as? String)
   }
 
-  /// Reads the `app.screen.name` / `journey.flow.name` Dart put next to the
-  /// `traceparent` in channel arguments. Nil when there is no trace context.
+  /// Reads the `app.screen.name`, `journey.flow.name` and
+  /// `journey.flow.instance_id` Dart put next to the `traceparent` in
+  /// channel arguments. Nil when there is no trace context.
   public static func appContext(fromChannelArguments arguments: Any?) -> AppContextValues? {
     guard let args = arguments as? [String: Any],
           let ctx = args[channelContextKey] as? [String: Any],
           parse(ctx[header] as? String) != nil
     else { return nil }
     return AppContextValues(screen: ctx[AppContextKeys.screen] as? String,
-                            flow: ctx[AppContextKeys.flow] as? String)
+                            flow: ctx[AppContextKeys.flow] as? String,
+                            flowId: ctx[AppContextKeys.flowId] as? String)
   }
 
   /// The value to put under `channelContextKey` in the arguments of a call
@@ -55,6 +57,7 @@ public enum TraceparentCodec {
     var ctx: [String: Any] = [header: traceparent]
     if let screen = app?.screen { ctx[AppContextKeys.screen] = screen }
     if let flow = app?.flow { ctx[AppContextKeys.flow] = flow }
+    if let flowId = app?.flowId { ctx[AppContextKeys.flowId] = flowId }
     return ctx
   }
 

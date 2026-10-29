@@ -89,7 +89,7 @@ class TelemetryPipeline {
         _redactor = redactor,
         _session = session,
         _limits = limits,
-        _commonResource = commonResource,
+        _commonResource = [...commonResource],
         _enrichers = enrichers,
         _enabled = enabled;
 
@@ -174,24 +174,31 @@ class TelemetryPipeline {
     });
   }
 
+  /// Adds resource attributes the native side knows (device model, OS
+  /// version) to everything sent from now on. Keys already present keep
+  /// their value; values that are not strings are ignored.
+  void addResource(Map<Object?, Object?> attributes) {
+    _guard(() {
+      final present = _commonResource.map((kv) => kv.key).toSet();
+      for (final MapEntry(:key, :value) in attributes.entries) {
+        if (key is String && value is String && !present.contains(key)) {
+          _commonResource.add(
+            pb.KeyValue(key: key, value: pb.AnyValue(stringValue: value)),
+          );
+        }
+      }
+    });
+  }
+
   /// Submits spans created by the Dart SDK.
   void submitDart(pb.ExportTraceServiceRequest request) =>
       _submit(request, SpanOrigin.dart);
 
   /// Submits spans that came from native code.
-  void submitNative(pb.ResourceSpans resourceSpans) {
-    _guard(() {
-      final attrs = resourceSpans.resource.attributes;
-      final present = attrs.map((kv) => kv.key).toSet();
-      for (final kv in _commonResource) {
-        if (!present.contains(kv.key)) attrs.add(kv.deepCopy());
-      }
-    });
-    _submit(
-      pb.ExportTraceServiceRequest(resourceSpans: [resourceSpans]),
-      SpanOrigin.native,
-    );
-  }
+  void submitNative(pb.ResourceSpans resourceSpans) => _submit(
+        pb.ExportTraceServiceRequest(resourceSpans: [resourceSpans]),
+        SpanOrigin.native,
+      );
 
   void _submit(pb.ExportTraceServiceRequest request, SpanOrigin origin) {
     if (!_enabled) return;
@@ -200,6 +207,11 @@ class TelemetryPipeline {
       final source =
           origin == SpanOrigin.dart ? bridgeSourceDart : bridgeSourceNative;
       for (final rs in request.resourceSpans) {
+        final attrs = rs.ensureResource().attributes;
+        final present = attrs.map((kv) => kv.key).toSet();
+        for (final kv in _commonResource) {
+          if (!present.contains(kv.key)) attrs.add(kv.deepCopy());
+        }
         for (final ss in rs.scopeSpans) {
           for (final span in ss.spans) {
             for (final enrich in _enrichers) {

@@ -49,6 +49,28 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
   providers).
 - `docs/specs/journey.md`: a section for receivers (what to accept, ids
   that must never be scrubbed, identity to stamp server side).
+- iOS: `Journey` in Swift, with the same contract as Dart's: screens, flows,
+  instant actions, measured actions (`Journey.begin` / `run.end`, or async
+  `Journey.track`), reasons and the user. Events are recorded natively,
+  queued until Dart is ready and exported with the Dart ones
+  (`exportEvents`).
+- The current screen, the open flow runs and the user are shared by Swift
+  and Dart: a flow started on a native screen can end on a Flutter one and
+  the other way round (`Journey.flowRun(flow)` on either side).
+- Session from the host: `OtelFlutterBridge.shared.setSession(id:previousId:)`
+  in Swift and `SessionConfig(fromHost: true)` in Dart, for apps whose native
+  side owns the session. Native spans and events then carry it from when
+  they start.
+- iOS: native spans carry `user.id` and `journey.flow.instance_id` (the run
+  Dart sent with `traceparent` is no longer dropped).
+- iOS: `device.model.identifier`, `device.manufacturer`, `os.version` and
+  the other device attributes are added to the resource of native and Dart
+  data by default; HTTP spans carry `network.connection.type`.
+- iOS: `error.type` of a `URLError` keeps its code (`URLError.timedOut`,
+  `URLError.notConnectedToInternet`, `URLError.serverCertificateUntrusted`)
+  instead of `URLError`.
+- Example app: scenario 11, a purchase that starts in Flutter and ends on a
+  native screen.
 
 ## 0.1.0-dev.3
 

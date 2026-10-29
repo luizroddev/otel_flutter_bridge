@@ -13,17 +13,20 @@ public class OtelFlutterBridgePlugin: NSObject, FlutterPlugin {
     let channel = FlutterMethodChannel(name: "otel_flutter_bridge", binaryMessenger: registrar.messenger())
     let instance = OtelFlutterBridgePlugin(channel: channel)
     registrar.addMethodCallDelegate(instance, channel: channel)
-    OtelFlutterBridge.shared.queue.setSink { [weak channel] batch in
-      let send: () -> Void = { channel?.invokeMethod("exportSpans", arguments: batch) }
+    let send: (String, [String: Any]) -> Void = { [weak channel] method, batch in
+      let call: () -> Void = { channel?.invokeMethod(method, arguments: batch) }
       if Thread.isMainThread {
-        send()
+        call()
       } else {
-        DispatchQueue.main.async(execute: send)
+        DispatchQueue.main.async(execute: call)
       }
     }
+    OtelFlutterBridge.shared.queue.setSink { send("exportSpans", $0) }
+    OtelFlutterBridge.shared.events.setSink { send("exportEvents", $0) }
   }
 
   public func handle(_ call: FlutterMethodCall, result: @escaping FlutterResult) {
+    let bridge = OtelFlutterBridge.shared
     let args = call.arguments as? [String: Any] ?? [:]
     switch call.method {
     case "ready":
@@ -31,12 +34,26 @@ public class OtelFlutterBridgePlugin: NSObject, FlutterPlugin {
         result(FlutterError(code: "unsupported_version", message: "Bridge format version mismatch", details: nil))
         return
       }
-      OtelFlutterBridge.shared.queue.markReady(
-        enabled: args["enabled"] as? Bool ?? true,
-        maxBatchSize: args["maxBatchSize"] as? Int ?? 64)
-      result(nil)
+      let enabled = args["enabled"] as? Bool ?? true
+      let maxBatchSize = args["maxBatchSize"] as? Int ?? 64
+      // Both sides end with the same journey state: native values win,
+      // Dart fills the gaps, then Dart adopts the reply.
+      JourneySync.merge(args["journey"], into: bridge.appContext)
+      bridge.setJourneySink { [weak channel = self.channel] op in
+        channel?.invokeMethod("journey", arguments: op)
+      }
+      var resource: [String: Any] = DeviceInfo.resourceAttributes
+      bridge.queue.resource.forEach { resource[$0.key] = $0.value.wireValue }
+      result(["journey": JourneySync.state(of: bridge.appContext), "resource": resource])
+      bridge.queue.markReady(enabled: enabled, maxBatchSize: maxBatchSize)
+      bridge.events.markReady(enabled: enabled, maxBatchSize: maxBatchSize)
     case "setEnabled":
-      OtelFlutterBridge.shared.queue.setEnabled(args["enabled"] as? Bool ?? true)
+      let enabled = args["enabled"] as? Bool ?? true
+      bridge.queue.setEnabled(enabled)
+      bridge.events.setEnabled(enabled)
+      result(nil)
+    case "journey":
+      JourneySync.apply(call.arguments, to: bridge.appContext)
       result(nil)
     default:
       result(FlutterMethodNotImplemented)

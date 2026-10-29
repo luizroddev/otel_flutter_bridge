@@ -13,21 +13,31 @@ public final class OtelFlutterBridge: @unchecked Sendable {
   /// Native spans waiting for, or flowing to, Dart.
   public let queue = PendingSpanQueue()
 
-  /// Current screen and flow of the host app, stamped on native spans when
-  /// they start (`app.screen.name`, `journey.flow.name`). Set `appContext.screen` when a
-  /// native screen appears; Flutter screens are set from Dart.
+  /// Native journey events (`Journey`) waiting for, or flowing to, Dart.
+  public let events = PendingEventQueue()
+
+  /// Where the user is (screen, open flow runs, user, and the host's
+  /// session), shared with Dart and stamped on native spans when they
+  /// start. Change it with `Journey`, which also records the events and
+  /// tells Dart.
   public let appContext = AppContextStore()
 
   public private(set) var tracerProvider: TracerProviderSdk?
   public private(set) var isStarted = false
 
+  private let journeyLock = NSLock()
+  private var journeySink: (([String: Any]) -> Void)?
+
   private init() {}
 
   /// Registers a tracer provider whose spans are sent to Dart.
   ///
+  /// The device model and OS (`device.model.identifier`, `os.version`, ...)
+  /// are added to the resource of native and Dart data by default.
+  ///
   /// Extension points:
-  /// - `resourceAttributes`: extra resource attributes for native spans
-  ///   (they must be allowed by the Dart redaction config).
+  /// - `resourceAttributes`: extra resource attributes, which also win over
+  ///   the defaults (they must be allowed by the Dart redaction config).
   /// - `extraProcessors`: more span processors, for example to log spans
   ///   while developing. They see spans before redaction.
   /// - `sampler`: defaults to always on; Dart sampling decisions are honoured
@@ -41,7 +51,10 @@ public final class OtelFlutterBridge: @unchecked Sendable {
                     scheduleDelay: TimeInterval = 1,
                     registerGlobal: Bool = true) -> TracerProviderSdk {
     if let tracerProvider { return tracerProvider }
-    queue.resource = FlutterChannelSpanExporter.attributes(resourceAttributes)
+    var resource = DeviceInfo.resourceAttributes.mapValues { AttributeValue.string($0) }
+    resourceAttributes.forEach { resource[$0.key] = $0.value }
+    queue.resource = FlutterChannelSpanExporter.attributes(resource)
+    NetworkStatus.shared.start()
     var builder = TracerProviderBuilder()
       .add(spanProcessor: makeAppContextProcessor())
       .add(spanProcessor: makeSpanProcessor(scheduleDelay: scheduleDelay))
@@ -103,8 +116,49 @@ public final class OtelFlutterBridge: @unchecked Sendable {
       appContext.register(values, forSpanId: span.context.spanId.hexString)
       if let screen = values.screen { span.setAttribute(key: AppContextKeys.screen, value: screen) }
       if let flow = values.flow { span.setAttribute(key: AppContextKeys.flow, value: flow) }
+      if let flowId = values.flowId { span.setAttribute(key: AppContextKeys.flowId, value: flowId) }
     }
     return span
+  }
+
+  /// Tells the library the host app's current session, when the app owns
+  /// it (its own rules start and renew it). Call it at launch, before the
+  /// Flutter engine runs, and whenever the session changes; set
+  /// `SessionConfig(fromHost: true)` in Dart so Dart follows it.
+  ///
+  /// A new id records a `session.start` event, with `previousId` when the
+  /// new session continues one that expired (not after a logout: the next
+  /// session may be another person's). Native spans and events get the
+  /// session when they start. The id must be random and must not identify
+  /// the user.
+  public func setSession(id: String, previousId: String? = nil) {
+    guard !id.isEmpty, appContext.setSession(id) else { return }
+    var attributes: [String: BridgeAttributeValue] = [AppContextKeys.session: .string(id)]
+    if let previousId, previousId != id { attributes[JourneyKeys.previousSession] = .string(previousId) }
+    Journey.record(JourneyKeys.sessionStart, attributes)
+    sendJourney(JourneySync.session(id))
+  }
+
+  /// Sends a change of the shared journey state to Dart once Dart is ready
+  /// (before that, `ready` sends the whole state). From the main thread it
+  /// goes right away, so Dart has it before the reply of a channel call
+  /// made after it.
+  func sendJourney(_ op: [String: Any]) {
+    journeyLock.lock()
+    let sink = journeySink
+    journeyLock.unlock()
+    guard let sink else { return }
+    if Thread.isMainThread {
+      sink(op)
+    } else {
+      DispatchQueue.main.async { sink(op) }
+    }
+  }
+
+  func setJourneySink(_ sink: (([String: Any]) -> Void)?) {
+    journeyLock.lock()
+    journeySink = sink
+    journeyLock.unlock()
   }
 
   /// Returns `arguments` with the trace context of `span` (default: the
@@ -130,9 +184,10 @@ public final class OtelFlutterBridge: @unchecked Sendable {
     return args
   }
 
-  /// Sends pending spans now.
+  /// Sends pending spans and events now.
   public func flush() {
     _ = tracerProvider?.forceFlush()
     queue.flush()
+    events.flush()
   }
 }
