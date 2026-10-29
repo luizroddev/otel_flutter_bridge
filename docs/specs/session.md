@@ -17,8 +17,10 @@ Status: draft · Implemented in `lib/src/session.dart`
 - 128 bits from `Random.secure()`, written as 32 lowercase hex characters.
 - Not derived from the user, the device, install id or time. It cannot
   identify anyone and cannot be linked across sessions.
-- Stamped on every span, Dart and native, as `session.id`
-  (OpenTelemetry session semantic convention), at export time.
+- Stamped as `session.id` (OpenTelemetry session semantic convention):
+  on Dart spans **when they start**, on journey events when they happen, and
+  on native spans when they reach the pipeline. A session renewed before
+  export never takes older Dart spans or events.
 - Never scrubbed by redaction (it is library generated).
 
 ## Replacing the rules

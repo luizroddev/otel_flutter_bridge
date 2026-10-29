@@ -2,10 +2,11 @@ import 'dart:async';
 
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 
+import 'pipeline.dart';
 import 'semantics.dart';
 
 /// Screen and flow values of one span.
-typedef AppContextValues = ({String? screen, String? flow});
+typedef AppContextValues = ({String? screen, String? flow, String? flowId});
 
 // What each started span was stamped with, so children (Dart, and native
 // through the channel) can copy it. The SDK puts this same span object in
@@ -24,16 +25,18 @@ AppContextValues? appContextOf(Object? span) =>
 R runWithRemoteAppContext<R>(AppContextValues values, R Function() fn) =>
     runZoned(fn, zoneValues: {_remoteValuesKey: values});
 
-/// Where the user is in the app: the current screen and flow. Stamped on
-/// every Dart span **when it starts**, as [appScreenKey] and [appFlowKey].
+/// Where the user is in the app: the current screen, flow and user. Stamped
+/// on every Dart span **when it starts**, as [appScreenKey], [appFlowKey],
+/// [appFlowInstanceKey] and [userIdKey].
 ///
-/// Update it from navigation (for example a `NavigatorObserver` or the
-/// router's listener) and at the start and end of a flow. Values must be
-/// fixed names such as `checkout.review`, never paths with ids.
+/// `Journey` keeps it up to date (`Journey.screen`, `Journey.startFlow`,
+/// `Journey.setUser`); set it directly only when you do not use `Journey`.
+/// Values must be fixed names such as `checkout.review`, never paths with
+/// ids.
 ///
-/// A span with a local parent copies the parent's values instead, so every
-/// span of one trace carries the same screen and flow even if the user
-/// navigates while it runs. The values also travel to native code with
+/// A span with a local parent copies the parent's screen and flow instead,
+/// so every span of one trace carries the same screen and flow even if the
+/// user navigates while it runs. The values also travel to native code with
 /// `invokeTraced`, so native children carry them too.
 abstract final class AppContext {
   /// The current screen, or null.
@@ -42,28 +45,53 @@ abstract final class AppContext {
   /// The current flow (a journey across screens), or null.
   static String? flow;
 
-  /// Clears both values.
+  /// The current run of [flow], or null. Set by `Journey.startFlow`.
+  static String? flowInstanceId;
+
+  /// The current user id, or null. Set by `Journey.setUser`.
+  static String? userId;
+
+  /// The current values, as stamped on a span that starts now.
+  static AppContextValues get values =>
+      (screen: screen, flow: flow, flowId: flowInstanceId);
+
+  /// Clears every value.
   static void clear() {
     screen = null;
     flow = null;
+    flowInstanceId = null;
+    userId = null;
   }
 }
 
-/// Stamps [AppContext] on spans at start. Installed by
-/// `OtelFlutterBridge.initialize`.
+/// Stamps [AppContext] and, when [session] is given, `session.id` on spans
+/// at start. Installed by `OtelFlutterBridge.initialize`.
 class AppContextSpanProcessor implements SpanProcessor {
+  /// Creates the processor. [session] is read when each span starts, so a
+  /// session renewed later never takes older spans.
+  AppContextSpanProcessor({this.session});
+
+  /// Where `session.id` comes from.
+  final SessionIdProvider? session;
+
   @override
   Future<void> onStart(Span span, Context? parentContext) async {
     try {
       final parent = parentContext?.span;
       final values = (parent == null ? null : _stamped[parent]) ??
           Zone.current[_remoteValuesKey] as AppContextValues? ??
-          (screen: AppContext.screen, flow: AppContext.flow);
+          AppContext.values;
       _stamped[span] = values;
       final screen = values.screen;
       final flow = values.flow;
+      final flowId = values.flowId;
+      final user = AppContext.userId;
       if (screen != null) span.setStringAttribute(appScreenKey, screen);
       if (flow != null) span.setStringAttribute(appFlowKey, flow);
+      if (flowId != null) span.setStringAttribute(appFlowInstanceKey, flowId);
+      if (user != null) span.setStringAttribute(userIdKey, user);
+      final s = session;
+      if (s != null) span.setStringAttribute(sessionIdKey, s.currentId);
     } catch (_) {
       // Telemetry never breaks the app.
     }

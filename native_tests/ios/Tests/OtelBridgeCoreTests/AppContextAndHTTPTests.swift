@@ -47,15 +47,15 @@ final class ChannelContextTests: XCTestCase {
 
   func testReadsScreenAndFlowFromDart() {
     let args: [String: Any] = ["_otel": ["traceparent": traceparent,
-                                         "app.screen": "checkout.review",
-                                         "app.flow": "purchase"]]
+                                         "app.screen.name": "checkout.review",
+                                         "app.flow.name": "purchase"]]
     XCTAssertEqual(TraceparentCodec.appContext(fromChannelArguments: args),
                    AppContextValues(screen: "checkout.review", flow: "purchase"))
   }
 
   func testNoTraceContextMeansNoAppContext() {
     XCTAssertNil(TraceparentCodec.appContext(fromChannelArguments: ["a": 1]))
-    XCTAssertNil(TraceparentCodec.appContext(fromChannelArguments: ["_otel": ["app.screen": "x"]]))
+    XCTAssertNil(TraceparentCodec.appContext(fromChannelArguments: ["_otel": ["app.screen.name": "x"]]))
     XCTAssertEqual(TraceparentCodec.appContext(fromChannelArguments: ["_otel": ["traceparent": traceparent]]),
                    AppContextValues())
   }
@@ -64,8 +64,8 @@ final class ChannelContextTests: XCTestCase {
     let ctx = TraceparentCodec.channelContext(traceparent: traceparent,
                                               app: AppContextValues(screen: "Orders.list"))
     XCTAssertEqual(ctx["traceparent"] as? String, traceparent)
-    XCTAssertEqual(ctx["app.screen"] as? String, "Orders.list")
-    XCTAssertNil(ctx["app.flow"])
+    XCTAssertEqual(ctx["app.screen.name"] as? String, "Orders.list")
+    XCTAssertNil(ctx["app.flow.name"])
     // Round trip through the reader used by native handlers.
     XCTAssertEqual(TraceparentCodec.appContext(fromChannelArguments: ["_otel": ctx])?.screen,
                    "Orders.list")

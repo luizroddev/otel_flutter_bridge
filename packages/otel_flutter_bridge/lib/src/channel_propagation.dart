@@ -8,7 +8,7 @@ import 'traceparent.dart';
 
 /// Returns a copy of [arguments] carrying the trace context of [context]
 /// (defaults to the current one) under [channelContextKey], with the
-/// span's `app.screen` / `app.flow` so native children carry them too.
+/// span's screen and flow so native children carry them too.
 ///
 /// The native side reads it with `OtelFlutterBridge.shared.startSpan` or
 /// `extractContext`. When there is no active span, [arguments] is returned
@@ -26,6 +26,7 @@ Map<String, Object?> withTraceContext(
       Traceparent.header: traceparent,
       if (app?.screen != null) appScreenKey: app!.screen,
       if (app?.flow != null) appFlowKey: app!.flow,
+      if (app?.flowId != null) appFlowInstanceKey: app!.flowId,
     };
   }
   return args;
@@ -34,7 +35,7 @@ Map<String, Object?> withTraceContext(
 /// Runs [fn] as a continuation of the trace native code sent in
 /// [arguments] (see `OtelFlutterBridge.shared.withTraceContext` on iOS), so
 /// spans started in [fn] become children of the native span and take its
-/// `app.screen` / `app.flow`.
+/// `app.screen.name` / `app.flow.name`.
 ///
 /// Use it at the top of a Dart `MethodChannel` handler that native code
 /// calls. Without trace context in [arguments], [fn] just runs.
@@ -63,9 +64,11 @@ Future<T> runWithTraceContext<T>(
         );
         final screen = otel[appScreenKey];
         final flow = otel[appFlowKey];
+        final flowId = otel[appFlowInstanceKey];
         app = (
           screen: screen is String ? screen : null,
           flow: flow is String ? flow : null,
+          flowId: flowId is String ? flowId : null,
         );
       }
     }

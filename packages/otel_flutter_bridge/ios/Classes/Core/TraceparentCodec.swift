@@ -38,7 +38,7 @@ public enum TraceparentCodec {
     return parse(ctx[header] as? String)
   }
 
-  /// Reads the `app.screen` / `app.flow` Dart put next to the
+  /// Reads the `app.screen.name` / `app.flow.name` Dart put next to the
   /// `traceparent` in channel arguments. Nil when there is no trace context.
   public static func appContext(fromChannelArguments arguments: Any?) -> AppContextValues? {
     guard let args = arguments as? [String: Any],

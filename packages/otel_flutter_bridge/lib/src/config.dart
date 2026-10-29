@@ -12,6 +12,8 @@ class OtelBridgeConfig {
     required this.endpoint,
     this.serviceVersion,
     this.deploymentEnvironment,
+    this.deviceId,
+    this.exportLogs = true,
     this.enabled = true,
     this.sampleRatio = 1.0,
     this.headers = const {},
@@ -32,6 +34,7 @@ class OtelBridgeConfig {
       endpoint: endpoint ?? Uri(),
       serviceVersion: _string(map['serviceVersion']),
       deploymentEnvironment: _string(map['deploymentEnvironment']),
+      exportLogs: _bool(map['exportLogs']) ?? true,
       enabled: _bool(map['enabled']) ?? true,
       sampleRatio: (_num(map['sampleRatio']) ?? 1.0).toDouble().clamp(0, 1),
       headers: _stringMap(map['headers']),
@@ -53,6 +56,16 @@ class OtelBridgeConfig {
 
   /// `deployment.environment.name`, for example `staging` or `production`.
   final String? deploymentEnvironment;
+
+  /// `device.id`: an id of this installation or device that the app already
+  /// has. Sent as a resource attribute on spans and journey events, so the
+  /// dashboard can find a device's sessions. Use an opaque id.
+  final String? deviceId;
+
+  /// Whether journey events (`Journey`) are sent as OTLP logs to
+  /// [logsEndpoint]. Turn it off when the destination takes traces only
+  /// (for example Jaeger).
+  final bool exportLogs;
 
   /// Base OTLP/HTTP endpoint, for example `https://collector.example.com`.
   /// `/v1/traces` is appended when missing. This is the only host the
@@ -86,11 +99,18 @@ class OtelBridgeConfig {
   final Duration exportTimeout;
 
   /// The full traces URL derived from [endpoint].
-  Uri get tracesEndpoint {
-    final path = endpoint.path;
-    if (path.endsWith('/v1/traces')) return endpoint;
+  Uri get tracesEndpoint => _signalUrl('traces');
+
+  /// The full logs URL derived from [endpoint].
+  Uri get logsEndpoint => _signalUrl('logs');
+
+  Uri _signalUrl(String signal) {
+    var path = endpoint.path;
+    for (final s in const ['/v1/traces', '/v1/logs']) {
+      if (path.endsWith(s)) path = path.substring(0, path.length - s.length);
+    }
     final base = path.endsWith('/') ? path.substring(0, path.length - 1) : path;
-    return endpoint.replace(path: '$base/v1/traces');
+    return endpoint.replace(path: '$base/v1/$signal');
   }
 }
 

@@ -35,6 +35,8 @@ class PocApp extends StatelessWidget {
   Widget build(BuildContext context) => MaterialApp(
         title: 'otel_flutter_bridge POC',
         theme: ThemeData(colorSchemeSeed: Colors.indigo, useMaterial3: true),
+        // Screen views for the journey, from the app's routes.
+        navigatorObservers: [JourneyNavigatorObserver()],
         home: const HomePage(),
       );
 }

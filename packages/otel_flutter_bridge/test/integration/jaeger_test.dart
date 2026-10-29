@@ -21,6 +21,7 @@ void main() {
       OtelBridgeConfig(
         serviceName: service,
         endpoint: Uri.parse('http://localhost:4318'),
+        exportLogs: false, // Jaeger takes traces only
       ),
       connectNative: false,
       scheduleDelay: const Duration(milliseconds: 50),

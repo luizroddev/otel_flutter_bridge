@@ -77,10 +77,22 @@ const defaultAllowedAttributes = <String>{
   'os.version',
   'device.model.identifier',
   'device.manufacturer',
-  // Session and app context.
+  deviceIdKey,
+  // Session, user and app context.
   sessionIdKey,
+  userIdKey,
   appScreenKey,
   appFlowKey,
+  // Journey events.
+  eventNameKey,
+  appScreenLabelKey,
+  appFlowLabelKey,
+  appFlowInstanceKey,
+  appActionKey,
+  appActionLabelKey,
+  appActionInstanceKey,
+  appOutcomeKey,
+  appDurationKey,
   // HTTP client.
   'http.request.method',
   'http.response.status_code',
@@ -106,8 +118,18 @@ const defaultAllowedAttributes = <String>{
 /// itself and resource attributes that describe the app and the device,
 /// which come from configuration or the OS, never from the user. Scrubbing
 /// would only corrupt them (a version or build number is a digit run).
+///
+/// `user.id` and `device.id` come from the app and are trusted to be opaque
+/// ids: scrubbing would corrupt numeric ids. Never pass an e-mail or a
+/// document number there.
 const trustedAttributes = <String>{
   sessionIdKey,
+  userIdKey,
+  deviceIdKey,
+  eventNameKey,
+  appFlowInstanceKey,
+  appActionInstanceKey,
+  appOutcomeKey,
   bridgeSourceKey,
   'service.name',
   'service.version',
@@ -224,6 +246,18 @@ class Redactor {
     if (span.hasStatus() && span.status.message.isNotEmpty) {
       span.status.message = scrub(span.status.message);
     }
+  }
+
+  /// Redacts resource attributes in place.
+  void redactResource(pb.Resource resource) {
+    resource.droppedAttributesCount += _redactAttributes(resource.attributes);
+  }
+
+  /// Redacts one journey log record in place. The body is always removed:
+  /// journey events carry only attributes, and a body is free text.
+  void redactLogRecord(pb.LogRecord record) {
+    record.clearBody();
+    record.droppedAttributesCount += _redactAttributes(record.attributes);
   }
 
   /// Returns how many attributes were dropped.

@@ -9,11 +9,15 @@ import 'package:otel_flutter_bridge/otel_flutter_bridge.dart';
 ///
 ///   flutter run --dart-define=OTEL_ENDPOINT=http://192.168.0.10:4318
 ///               --dart-define=DEMO_BACKEND=http://192.168.0.10:8080
+///               --dart-define=OTEL_LOGS=true
 ///
 /// An empty OTEL_ENDPOINT keeps data in memory only (inspector only).
+/// OTEL_LOGS=true also sends journey events (`/v1/logs`); leave it off when
+/// the endpoint is Jaeger, which takes traces only.
 abstract final class PocConfig {
   static const _endpoint = String.fromEnvironment('OTEL_ENDPOINT');
   static const _backend = String.fromEnvironment('DEMO_BACKEND');
+  static const _logs = bool.fromEnvironment('OTEL_LOGS');
 
   /// The Android emulator reaches the host machine at 10.0.2.2.
   static String get _host => Platform.isAndroid ? '10.0.2.2' : 'localhost';
@@ -29,6 +33,9 @@ abstract final class PocConfig {
         serviceName: 'otel-bridge-poc',
         serviceVersion: '0.1.0',
         deploymentEnvironment: 'local',
+        // Fictional: a real app passes the installation id it already has.
+        deviceId: 'demo-device-1',
+        exportLogs: _logs,
         endpoint: Uri.parse(endpoint.isEmpty ? 'http://unused' : endpoint),
         redaction: const RedactionConfig(
           // Extension point: extra patterns for this app's own identifiers.

@@ -21,6 +21,10 @@ Flutter tap ──► channel call ──► native code ──► native HTTP �
 - **Zero swizzling, zero hooks.** Only what the app calls explicitly is
   traced, so builds hardened by runtime app protection tools are not disturbed.
 - **Never breaks the app.** Errors drop data, never throw.
+- **Journey out of the box.** Screens, flows and actions from plain enums,
+  sent as OTLP log events and spans, so a dashboard can show what the user
+  did in a session and open the trace of each step. See
+  [docs/specs/journey.md](docs/specs/journey.md).
 - **Runtime kill switch** and configuration from remote config.
 
 > Status: `0.1.0-dev`. Milestones M0 to M4 of the [roadmap](docs/roadmap.md)
@@ -55,6 +59,19 @@ await OtelFlutterBridge.initialize(
     endpoint: Uri.parse('https://otel-collector.example.com'),
   ),
 );
+
+// The journey: your own enums, one line per thing worth seeing.
+enum AppScreen with JourneyScreen { home, login, cart }
+enum AppFlow with JourneyFlow { login, checkout }
+enum AppAction with JourneyAction { chooseBiometric, confirmLogin, pay }
+
+MaterialApp(navigatorObservers: [JourneyNavigatorObserver()]); // screens
+final login = Journey.startFlow(AppFlow.login);
+Journey.event(AppAction.chooseBiometric);                       // instant
+final ok = await Journey.track(AppAction.confirmLogin, auth.login,   // span
+    outcome: (ok) => ok ? JourneyOutcome.success : JourneyOutcome.failure);
+login.end(ok ? JourneyOutcome.success : JourneyOutcome.failure);
+Journey.setUser('u-42');                                        // opaque id
 
 // Anywhere: the standard OpenTelemetry API.
 final tracer = OTel.tracer();
@@ -107,7 +124,7 @@ on<LoadOrders>(tracedHandler('orders.load', _onLoadOrders));
 | `packages/otel_flutter_bridge/example` | POC app: scenarios + inspector |
 | `tools/demo_backend` | Tiny server that continues the trace |
 | `native_tests/ios` | `swift test` for the Foundation-only iOS core |
-| `docs/specs` | The six specs (configuration, session, naming, redaction, failure, native bridge) |
+| `docs/specs` | The specs (configuration, session, naming, redaction, failure, native bridge, journey) |
 | `docs/adr` | Architecture decision records |
 | `docs/extension-points.md` | Every seam for app-specific customization |
 | `docs/roadmap.md` | Milestones |
@@ -134,7 +151,11 @@ pull request.
   `traced(channel:)` (Swift) / `setTracedMethodCallHandler` (Dart) on the
   receiving side; generic propagation is M7.
 - Native crash capture is out of scope; keep your crash reporter.
-- Traces only. Metrics and logs are out of scope for now.
+- Traces and journey events (OTLP logs). Metrics and free-form logs are out
+  of scope. The journey API is Dart only for now; native spans still carry
+  screen and flow.
+- Destinations that take traces only (Jaeger) need
+  `OtelBridgeConfig(exportLogs: false)`.
 
 ## Compatibility
 

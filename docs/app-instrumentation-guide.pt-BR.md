@@ -215,7 +215,7 @@ Com `go_router` ou `auto_route`, faça o mesmo no listener do router, com o
   handler até o HTTP, o nativo e o backend.
 - **Jornada = a sessão**: todo span tem `session.id`. Filtrar por ela mostra
   a linha do tempo do usuário.
-- **Onde o usuário estava = `app.screen` e `app.flow`**, carimbados no
+- **Onde o usuário estava = `app.screen.name` e `app.flow.name`**, carimbados no
   início de cada span (filhos herdam do pai, então um trace nunca mistura
   telas). Permite "todos os traces do fluxo `purchase`" ou "p95 de
   `orders.load` por tela".
@@ -399,7 +399,7 @@ eles dispararem continuam rastreadas pelo client, como raízes próprias.
 
 Por padrão, um evento disparado por `stream.listen` de outro Bloc, ou por
 uma chamada do nativo, inicia um trace novo. Na maioria dos casos isso é
-correto: são ações diferentes, ligadas pela sessão e pelo `app.flow`.
+correto: são ações diferentes, ligadas pela sessão e pelo `app.flow.name`.
 
 Quando a causalidade importa para investigar (ex.: o push do nativo que
 dispara a sincronização), ligue os traces com um **span link**: "relacionado
@@ -577,7 +577,7 @@ channel.setMethodCallHandler(OtelFlutterBridge.shared.traced(channel: "app/nativ
 Alteração além das fronteiras: **nenhuma**.
 
 ```
-perfil.open (Dart)                                  app.screen=perfil
+perfil.open (Dart)                                  app.screen.name=perfil
 └─ app/native/getPerfil (client, Dart)                210 ms
    └─ app/native/getPerfil (server, Swift)            205 ms
       └─ GET /v1/perfil                               190 ms   status 200
@@ -662,7 +662,7 @@ onde o nativo avisa o Flutter.
 Pedido do Flutter sem cache:
 
 ```
-home.load (Dart)                                    app.screen=home
+home.load (Dart)                                    app.screen.name=home
 └─ app/native/getCart (client, Dart)                 120 ms
    └─ app/native/getCart (server, Swift)             118 ms   ← a espera aparece
       ├─ GET /v1/cart                                110 ms
@@ -676,7 +676,7 @@ callback dele faz depois vá para o trace do primeiro.**
 Atualização pelo Timer:
 
 ```
-GET /v1/cart (Swift, raiz)                         app.screen=orders
+GET /v1/cart (Swift, raiz)                         app.screen.name=orders
 ├─ backend ...
 └─ app/native/cartUpdated (server, Dart)
    └─ GET /v1/orders (Dart) ...

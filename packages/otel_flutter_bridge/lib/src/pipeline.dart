@@ -67,8 +67,8 @@ class ExportRecord {
       .expand((ss) => ss.spans);
 }
 
-/// The single path every span takes before leaving the device:
-/// enrich, stamp the session, redact, queue, send.
+/// The single path every span and journey event takes before leaving the
+/// device: enrich, stamp the session, redact, queue, send.
 ///
 /// Never throws to its callers. Any error drops the data and is reported to
 /// [onDiagnostic]. See `docs/specs/failure-and-limits.md`.
@@ -76,6 +76,7 @@ class TelemetryPipeline {
   /// Creates a pipeline.
   TelemetryPipeline({
     required TraceTransport transport,
+    LogTransport? logTransport,
     required Redactor redactor,
     required SessionIdProvider session,
     required BridgeLimits limits,
@@ -84,6 +85,7 @@ class TelemetryPipeline {
     this.onDiagnostic,
     bool enabled = true,
   })  : _transport = transport,
+        _logTransport = logTransport,
         _redactor = redactor,
         _session = session,
         _limits = limits,
@@ -92,14 +94,18 @@ class TelemetryPipeline {
         _enabled = enabled;
 
   final TraceTransport _transport;
+  final LogTransport? _logTransport;
   final Redactor _redactor;
   final SessionIdProvider _session;
   final BridgeLimits _limits;
   final List<pb.KeyValue> _commonResource;
   final List<SpanEnricher> _enrichers;
   final _queue = ListQueue<(pb.ExportTraceServiceRequest, SpanOrigin)>();
+  final _logQueue = ListQueue<pb.ExportLogsServiceRequest>();
   final _records = StreamController<ExportRecord>.broadcast();
+  final _logRecords = StreamController<pb.ExportLogsServiceRequest>.broadcast();
   Future<void>? _draining;
+  Future<void>? _drainingLogs;
   bool _enabled;
 
   /// Receives every internal problem. Never called with personal data.
@@ -108,11 +114,64 @@ class TelemetryPipeline {
   /// Every request sent, after redaction. Used by the in-app inspector.
   Stream<ExportRecord> get records => _records.stream;
 
+  /// Every journey log request sent, after redaction.
+  Stream<pb.ExportLogsServiceRequest> get logRecords => _logRecords.stream;
+
+  /// Whether journey events have somewhere to go.
+  bool get exportsLogs => _logTransport != null;
+
   /// Whether data flows. When false, everything submitted is discarded.
   bool get enabled => _enabled;
   set enabled(bool value) {
     _enabled = value;
-    if (!value) _queue.clear();
+    if (!value) {
+      _queue.clear();
+      _logQueue.clear();
+    }
+  }
+
+  /// Submits journey log records. Each one should already carry its
+  /// `session.id`, read when the event happened.
+  void submitLogs(List<pb.LogRecord> records) {
+    final transport = _logTransport;
+    if (!_enabled || transport == null || records.isEmpty) return;
+    _guard(() {
+      final resource = pb.Resource(
+        attributes: [for (final kv in _commonResource) kv.deepCopy()],
+      );
+      _redactor.redactResource(resource);
+      for (final r in records) {
+        _redactor.redactLogRecord(r);
+      }
+      final max = _limits.maxSpansPerExport;
+      for (var i = 0; i < records.length; i += max) {
+        final part = records.sublist(
+          i,
+          i + max > records.length ? records.length : i + max,
+        );
+        if (_logQueue.length >= _limits.maxQueuedBatches) {
+          _logQueue.removeFirst();
+          _report(BridgeDiagnosticKind.queueFull);
+        }
+        _logQueue.add(
+          pb.ExportLogsServiceRequest(
+            resourceLogs: [
+              pb.ResourceLogs(
+                resource: resource,
+                scopeLogs: [
+                  pb.ScopeLogs(
+                    scope: pb.InstrumentationScope(name: journeyScopeName),
+                    logRecords: part,
+                  ),
+                ],
+              ),
+            ],
+          ),
+        );
+      }
+      _drainingLogs ??=
+          _drainLogs(transport).whenComplete(() => _drainingLogs = null);
+    });
   }
 
   /// Submits spans created by the Dart SDK.
@@ -146,7 +205,11 @@ class TelemetryPipeline {
             for (final enrich in _enrichers) {
               enrich(span, origin);
             }
-            _put(span.attributes, sessionIdKey, sessionId);
+            // Dart spans carry the session they started in; native spans
+            // get the one current when they arrive.
+            if (!span.attributes.any((kv) => kv.key == sessionIdKey)) {
+              _put(span.attributes, sessionIdKey, sessionId);
+            }
             _put(span.attributes, bridgeSourceKey, source);
           }
         }
@@ -165,8 +228,9 @@ class TelemetryPipeline {
 
   /// Waits until everything queued was sent or dropped.
   Future<void> flush() async {
-    while (_draining != null) {
+    while (_draining != null || _drainingLogs != null) {
       await _draining;
+      await _drainingLogs;
     }
   }
 
@@ -174,7 +238,9 @@ class TelemetryPipeline {
   Future<void> shutdown() async {
     await flush();
     await _transport.close();
+    await _logTransport?.close();
     await _records.close();
+    await _logRecords.close();
   }
 
   Future<void> _drain() async {
@@ -196,6 +262,22 @@ class TelemetryPipeline {
             time: DateTime.now(),
           ),
         );
+      }
+    }
+  }
+
+  Future<void> _drainLogs(LogTransport transport) async {
+    while (_logQueue.isNotEmpty) {
+      final request = _logQueue.removeFirst();
+      var ok = false;
+      try {
+        ok = await transport.send(request);
+      } catch (_) {
+        ok = false;
+      }
+      if (!ok) _report(BridgeDiagnosticKind.exportFailed);
+      if (!_logRecords.isClosed && _logRecords.hasListener) {
+        _logRecords.add(request);
       }
     }
   }

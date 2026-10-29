@@ -101,7 +101,7 @@ void main() {
       enrichers: [
         (span, origin) => span.attributes.addAll([
               pb.KeyValue(
-                key: 'app.flow',
+                key: 'app.flow.name',
                 value: pb.AnyValue(stringValue: 'login'),
               ),
               pb.KeyValue(
@@ -114,7 +114,7 @@ void main() {
     p.submitDart(requestWith(1));
     await p.flush();
     final keys = transport.spans.single.attributes.map((a) => a.key);
-    expect(keys, contains('app.flow'));
+    expect(keys, contains('app.flow.name'));
     expect(keys, isNot(contains('not.allowed')));
   });
 
