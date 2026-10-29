@@ -85,6 +85,8 @@ const defaultAllowedAttributes = <String>{
   appFlowKey,
   // Journey events.
   eventNameKey,
+  logRecordUidKey,
+  appFlowParentInstanceKey,
   appScreenLabelKey,
   appFlowLabelKey,
   appFlowInstanceKey,
@@ -127,7 +129,9 @@ const trustedAttributes = <String>{
   userIdKey,
   deviceIdKey,
   eventNameKey,
+  logRecordUidKey,
   appFlowInstanceKey,
+  appFlowParentInstanceKey,
   appActionInstanceKey,
   appOutcomeKey,
   bridgeSourceKey,

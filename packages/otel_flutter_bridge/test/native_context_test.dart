@@ -63,6 +63,33 @@ void main() {
       };
 
   group('Dart → native', () {
+    test('invokeTraced before initialize: the call goes out untraced',
+        () async {
+      Object? received;
+      messenger.setMockMethodCallHandler(appChannel, (call) async {
+        received = call.arguments;
+        return 'ok';
+      });
+      final r = await appChannel.invokeTraced<String>(
+        'pay',
+        arguments: {'amount': 10},
+      );
+      expect(r, 'ok');
+      expect(received, {'amount': 10});
+    });
+
+    test('invokeTraced before initialize keeps the call error', () async {
+      messenger.setMockMethodCallHandler(
+        appChannel,
+        (_) async => throw PlatformException(code: 'declined'),
+      );
+      await expectLater(
+        appChannel.invokeTraced<void>('pay'),
+        throwsA(
+            isA<PlatformException>().having((e) => e.code, 'code', 'declined')),
+      );
+    });
+
     test('invokeTraced sends screen and flow with traceparent', () async {
       await init();
       Map<Object?, Object?>? otel;

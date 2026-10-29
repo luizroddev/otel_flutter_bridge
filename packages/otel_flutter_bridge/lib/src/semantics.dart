@@ -14,7 +14,13 @@ const userIdKey = 'user.id';
 const deviceIdKey = 'device.id';
 
 /// `event.name` of a log record, from the OpenTelemetry event conventions.
+/// Also written to the OTLP `event_name` field.
 const eventNameKey = 'event.name';
+
+/// `log.record.uid`, from the OpenTelemetry log conventions: a unique id of
+/// each journey event, so receivers can drop resends. Random, 32 hex
+/// characters.
+const logRecordUidKey = 'log.record.uid';
 
 /// The screen the user was on when a span or event started
 /// (`app.screen.name`, OpenTelemetry semantic conventions). See `AppContext`.
@@ -31,6 +37,10 @@ const appFlowLabelKey = 'app.flow.label';
 
 /// One run of a flow, such as one login attempt. Random, 32 hex characters.
 const appFlowInstanceKey = 'app.flow.instance_id';
+
+/// The run of the flow that was current when this one started, on
+/// `app.flow.start` / `app.flow.end` of a nested flow.
+const appFlowParentInstanceKey = 'app.flow.parent_instance_id';
 
 /// The action of a journey step, such as `confirmLogin`.
 const appActionKey = 'app.action.name';

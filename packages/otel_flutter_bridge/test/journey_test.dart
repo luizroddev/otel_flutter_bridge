@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 import 'package:dartastic_opentelemetry/proto/opentelemetry_proto_dart.dart'
@@ -19,7 +20,7 @@ enum TScreen with JourneyScreen {
   final String? label;
 }
 
-enum TFlow with JourneyFlow { login }
+enum TFlow with JourneyFlow { login, activation }
 
 enum TAction with JourneyAction {
   chooseBiometric,
@@ -254,6 +255,99 @@ void main() {
     Journey.screen(TScreen.home);
     await OtelFlutterBridge.flush();
     expect(logs.requests, isEmpty);
+  });
+
+  test('nested flows: the inner one ends, the outer is current again',
+      () async {
+    await init();
+    final login = Journey.startFlow(TFlow.login);
+    final activation = Journey.startFlow(TFlow.activation);
+    expect(Journey.currentFlow, same(activation));
+    Journey.event(TAction.chooseBiometric);
+    activation.end(JourneyOutcome.success);
+    expect(Journey.currentFlow, same(login));
+    expect(AppContext.flow, 'login');
+    expect(AppContext.flowInstanceId, login.instanceId);
+    Journey.event(TAction.confirmLogin);
+    login.end(JourneyOutcome.success);
+    expect(Journey.currentFlow, isNull);
+    expect(AppContext.flowInstanceId, isNull);
+    await OtelFlutterBridge.flush();
+
+    final e = events();
+    final starts = e.where((a) => a['event.name'] == 'app.flow.start').toList();
+    expect(starts.first.containsKey('app.flow.parent_instance_id'), isFalse);
+    expect(starts.last['app.flow.parent_instance_id'], login.instanceId);
+    final ends = e.where((a) => a['event.name'] == 'app.flow.end').toList();
+    expect(ends.first['app.flow.parent_instance_id'], login.instanceId);
+    Map<String, Object?> action(String name) =>
+        e.singleWhere((a) => a['app.action.name'] == name);
+    expect(action('chooseBiometric')['app.flow.instance_id'],
+        activation.instanceId);
+    expect(action('confirmLogin')['app.flow.instance_id'], login.instanceId);
+  });
+
+  test('ending the outer flow first keeps the inner one current', () async {
+    await init();
+    final login = Journey.startFlow(TFlow.login);
+    final activation = Journey.startFlow(TFlow.activation);
+    login.end();
+    expect(Journey.currentFlow, same(activation));
+    expect(AppContext.flowInstanceId, activation.instanceId);
+    activation.end();
+    expect(Journey.currentFlow, isNull);
+  });
+
+  test('track: span and event keep the context of when it started', () async {
+    await init();
+    Journey.screen(TScreen.login);
+    final run = Journey.startFlow(TFlow.login);
+    await Journey.track(TAction.confirmLogin, () async {
+      Journey.screen(TScreen.home); // navigated while it ran
+      Journey.setUser('u-9'); // logged in while it ran
+      run.end();
+      session.id = 's2'; // session renewed while it ran
+    });
+    await OtelFlutterBridge.flush();
+    final e = events().singleWhere((a) =>
+        a['event.name'] == 'app.action' &&
+        a['app.action.name'] == 'confirmLogin');
+    expect(e, containsPair('app.screen.name', 'login'));
+    expect(e, containsPair('app.flow.instance_id', run.instanceId));
+    expect(e, containsPair('session.id', 's1'));
+    expect(e.containsKey('user.id'), isFalse);
+    final span = spanAttrs('confirmLogin');
+    expect(span, containsPair('app.screen.name', 'login'));
+    expect(span, containsPair('session.id', 's1'));
+    expect(span.containsKey('user.id'), isFalse);
+  });
+
+  test('every event has its own log.record.uid and the OTLP event_name',
+      () async {
+    await init();
+    Journey.screen(TScreen.home);
+    Journey.event(TAction.chooseBiometric);
+    await OtelFlutterBridge.flush();
+    final uids = events().map((a) => a['log.record.uid']).toList();
+    expect(uids.toSet(), hasLength(2));
+    for (final uid in uids) {
+      expect(uid, matches(RegExp(r'^[0-9a-f]{32}$')));
+    }
+    // Field 12 survives encoding, so OTLP receivers read event_name.
+    final decoded = pb.ExportLogsServiceRequest.fromBuffer(
+      logs.requests.single.writeToBuffer(),
+    );
+    final names = [
+      for (final r in decoded.resourceLogs.single.scopeLogs.single.logRecords)
+        utf8.decode(r.unknownFields.getField(12)!.lengthDelimited.single),
+    ];
+    expect(names, ['app.screen.view', 'app.action']);
+  });
+
+  test('os.type and os.name follow the semantic conventions', () {
+    expect(osAttributes('ios'), {'os.type': 'darwin', 'os.name': 'iOS'});
+    expect(osAttributes('android'), {'os.type': 'linux', 'os.name': 'Android'});
+    expect(osAttributes('fuchsia'), {'os.name': 'fuchsia'});
   });
 
   test('without initialize, track runs and nothing is recorded', () async {

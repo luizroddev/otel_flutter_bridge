@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:math';
 
 import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
@@ -75,7 +76,13 @@ typedef JourneyAttributes = Map<String, Object?>;
 
 /// One run of a flow, from `Journey.startFlow` to [end].
 class JourneyFlowRun {
-  JourneyFlowRun._(this.code, this.label, this.instanceId, this._start);
+  JourneyFlowRun._(
+    this.code,
+    this.label,
+    this.instanceId,
+    this.parentInstanceId,
+    this._start,
+  );
 
   /// The flow's code.
   final String code;
@@ -86,6 +93,10 @@ class JourneyFlowRun {
   /// Random id of this run, sent as `app.flow.instance_id`.
   final String instanceId;
 
+  /// The run that was current when this one started, or null. Sent as
+  /// `app.flow.parent_instance_id`.
+  final String? parentInstanceId;
+
   final DateTime _start;
   bool _ended = false;
 
@@ -93,7 +104,8 @@ class JourneyFlowRun {
   bool get isEnded => _ended;
 
   /// Ends the run with [outcome]. Only the first call counts. When this is
-  /// the current flow, the app context leaves it.
+  /// the current flow, the flow it was nested in (if any, and not ended)
+  /// becomes current again.
   void end([
     JourneyOutcome outcome = JourneyOutcome.completed,
     JourneyAttributes attributes = const {},
@@ -106,16 +118,13 @@ class JourneyFlowRun {
         appFlowKey: code,
         appFlowLabelKey: label,
         appFlowInstanceKey: instanceId,
+        appFlowParentInstanceKey: parentInstanceId,
         appOutcomeKey: outcome.name,
         appDurationKey: DateTime.now().difference(_start).inMilliseconds,
         ...attributes,
       },
     );
-    if (AppContext.flowInstanceId == instanceId) {
-      AppContext.flow = null;
-      AppContext.flowInstanceId = null;
-      if (identical(Journey._currentFlow, this)) Journey._currentFlow = null;
-    }
+    Journey._removeFlow(this);
   }
 }
 
@@ -135,7 +144,8 @@ class JourneyFlowRun {
 /// the app context is still updated, but nothing is recorded.
 abstract final class Journey {
   static JourneyRecorder? _recorder;
-  static JourneyFlowRun? _currentFlow;
+  // Runs not ended, oldest first. The last one is the current flow.
+  static final _flows = <JourneyFlowRun>[];
   static final _random = Random.secure();
 
   /// The current user id, or null.
@@ -147,7 +157,7 @@ abstract final class Journey {
       AppContext.userId = id == null || id.isEmpty ? null : id;
 
   /// The flow run started last and not ended, or null.
-  static JourneyFlowRun? get currentFlow => _currentFlow;
+  static JourneyFlowRun? get currentFlow => _flows.isEmpty ? null : _flows.last;
 
   /// The user entered [screen]. Sets the current screen and records an
   /// `app.screen.view` event.
@@ -170,6 +180,11 @@ abstract final class Journey {
   /// Starts a run of [flow] and makes it the current flow. Records an
   /// `app.flow.start` event. End it with [JourneyFlowRun.end]; a run never
   /// ended shows as "no conclusion", not as abandoned.
+  ///
+  /// A flow started while another one is current is nested (for example a
+  /// token activation inside a login): its events carry
+  /// `app.flow.parent_instance_id`, and ending it makes the outer flow
+  /// current again. Starting a flow never ends the current one.
   static JourneyFlowRun startFlow(
     JourneyFlow flow, {
     JourneyAttributes attributes = const {},
@@ -178,13 +193,29 @@ abstract final class Journey {
       flow.code,
       flow.label,
       newSessionId(_random),
+      currentFlow?.instanceId,
       DateTime.now(),
     );
+    _flows.add(run);
     AppContext.flow = run.code;
     AppContext.flowInstanceId = run.instanceId;
-    _currentFlow = run;
-    _emit(eventFlowStart, {appFlowLabelKey: run.label, ...attributes});
+    _emit(eventFlowStart, {
+      appFlowLabelKey: run.label,
+      appFlowParentInstanceKey: run.parentInstanceId,
+      ...attributes,
+    });
     return run;
+  }
+
+  static void _removeFlow(JourneyFlowRun run) {
+    _flows.remove(run);
+    // Only when the app context still points at this run: a value the app
+    // set by hand is left alone.
+    if (AppContext.flowInstanceId == run.instanceId) {
+      final top = currentFlow;
+      AppContext.flow = top?.code;
+      AppContext.flowInstanceId = top?.instanceId;
+    }
   }
 
   /// Records an instant [action], such as choosing an option. No span and
@@ -213,6 +244,10 @@ abstract final class Journey {
   /// outcome is [JourneyOutcome.failure] with `error.type` (from
   /// [errorType] or a fixed name for common types), never the error text,
   /// and the same error is rethrown with its stack trace.
+  ///
+  /// Screen, flow, user and session are those of when [body] started, on
+  /// the span and on the event, even if the user navigates or logs in while
+  /// it runs.
   static Future<T> track<T>(
     JourneyAction action,
     FutureOr<T> Function() body, {
@@ -235,6 +270,7 @@ abstract final class Journey {
 
     final instanceId = newSessionId(_random);
     final start = DateTime.now();
+    final at = recorder?.snapshot();
     final attrs = <String, Object?>{
       appActionKey: action.code,
       appActionLabelKey: action.label,
@@ -308,6 +344,7 @@ abstract final class Journey {
       },
       span: span,
       time: start,
+      at: at,
     );
     if (e != null) Error.throwWithStackTrace(e, stackTrace!);
     return result;
@@ -322,19 +359,20 @@ abstract final class Journey {
   /// Sends buffered events to the pipeline. Library use.
   static void flushBuffer() => _recorder?.flush();
 
-  /// Forgets the current flow. Library use (shutdown and tests).
-  static void reset() => _currentFlow = null;
+  /// Forgets the open flows. Library use (shutdown and tests).
+  static void reset() => _flows.clear();
 
   static void _emit(
     String eventName,
     JourneyAttributes attributes, {
     APISpan? span,
     DateTime? time,
+    JourneySnapshot? at,
   }) {
     final recorder = _recorder;
     if (recorder == null) return;
     try {
-      recorder.record(eventName, attributes, span: span, time: time);
+      recorder.record(eventName, attributes, span: span, time: time, at: at);
     } catch (_) {
       // Telemetry never breaks the app.
     }
@@ -372,6 +410,13 @@ abstract final class Journey {
   }
 }
 
+/// The context of one moment: app context, user and session. Library use.
+typedef JourneySnapshot = ({
+  AppContextValues context,
+  String? userId,
+  String sessionId,
+});
+
 /// Builds journey log records and hands them to the pipeline in batches.
 /// Library use; created by `OtelFlutterBridge.initialize`.
 class JourneyRecorder {
@@ -397,16 +442,26 @@ class JourneyRecorder {
   final int maxBatchSize;
 
   final _buffer = <pb.LogRecord>[];
+  final _random = Random.secure();
   Timer? _timer;
 
-  /// Records one event with the current app context.
+  /// The current context, to record an event later as if it happened now.
+  JourneySnapshot snapshot() => (
+        context: AppContext.values,
+        userId: AppContext.userId,
+        sessionId: session.currentId,
+      );
+
+  /// Records one event with the context [at] (default: now).
   void record(
     String eventName,
     JourneyAttributes attributes, {
     APISpan? span,
     DateTime? time,
+    JourneySnapshot? at,
   }) {
     if (!pipeline.enabled || !pipeline.exportsLogs) return;
+    final now = at ?? snapshot();
     final when = time ?? DateTime.now();
     final nanos = Int64(when.microsecondsSinceEpoch) * 1000;
     final record = pb.LogRecord(
@@ -415,11 +470,16 @@ class JourneyRecorder {
       severityNumber: pb.SeverityNumber.SEVERITY_NUMBER_INFO,
       severityText: 'INFO',
     );
-    final ctx = AppContext.values;
+    // OTLP `event_name` (field 12) is newer than the protobuf classes of the
+    // SDK: write it as a raw field. Replace with the generated setter when
+    // the SDK has it. `event.name` stays as an attribute for older readers.
+    record.unknownFields.mergeLengthDelimitedField(12, utf8.encode(eventName));
+    final ctx = now.context;
     final values = <String, Object?>{
       eventNameKey: eventName,
-      sessionIdKey: session.currentId,
-      userIdKey: AppContext.userId,
+      logRecordUidKey: newSessionId(_random),
+      sessionIdKey: now.sessionId,
+      userIdKey: now.userId,
       appScreenKey: ctx.screen,
       appFlowKey: ctx.flow,
       appFlowInstanceKey: ctx.flowId,

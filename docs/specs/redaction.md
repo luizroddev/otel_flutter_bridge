@@ -69,8 +69,8 @@ number is a digit run).
 
 Also trusted: `user.id` and `device.id`, ids the app passes on purpose
 (`Journey.setUser`, `OtelBridgeConfig.deviceId`), and the journey values the
-library generates (`event.name`, `app.flow.instance_id`,
-`app.action.instance_id`, `app.outcome`). A numeric user id would otherwise
+library generates (`event.name`, `log.record.uid`, `app.flow.instance_id`,
+`app.flow.parent_instance_id`, `app.action.instance_id`, `app.outcome`). A numeric user id would otherwise
 be redacted as a document number. The app must pass opaque ids there, never
 an e-mail or a document.
 

@@ -215,14 +215,35 @@ abstract final class OtelFlutterBridge {
   static Map<String, Object> _platformAttributes() {
     if (kIsWeb) return const {};
     try {
-      return {
-        'os.type': Platform.operatingSystem == 'macos'
-            ? 'darwin'
-            : Platform.operatingSystem,
-        'os.name': Platform.operatingSystem,
-      };
+      return osAttributes(Platform.operatingSystem);
     } catch (_) {
       return const {};
     }
   }
+}
+
+/// `os.type` (semantic conventions enum: iOS and macOS are `darwin`,
+/// Android is `linux`) and `os.name` (readable: `iOS`, `Android`) for a
+/// `Platform.operatingSystem` value. Library use, exposed for tests.
+@visibleForTesting
+Map<String, Object> osAttributes(String operatingSystem) {
+  const types = {
+    'ios': 'darwin',
+    'macos': 'darwin',
+    'android': 'linux',
+    'linux': 'linux',
+    'windows': 'windows',
+  };
+  const names = {
+    'ios': 'iOS',
+    'macos': 'macOS',
+    'android': 'Android',
+    'linux': 'Linux',
+    'windows': 'Windows',
+  };
+  final type = types[operatingSystem];
+  return {
+    if (type != null) 'os.type': type,
+    'os.name': names[operatingSystem] ?? operatingSystem,
+  };
 }
