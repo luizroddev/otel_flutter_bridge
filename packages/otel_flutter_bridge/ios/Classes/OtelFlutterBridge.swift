@@ -27,10 +27,13 @@ public final class OtelFlutterBridge: @unchecked Sendable {
 
   private let journeyLock = NSLock()
   private var journeySink: (([String: Any]) -> Void)?
+  private var dartFlush: ((@escaping () -> Void) -> Void)?
 
   private init() {}
 
-  /// Registers a tracer provider whose spans are sent to Dart.
+  /// Registers a tracer provider whose spans are sent to Dart, and sends
+  /// what is pending when the app goes to the background (see
+  /// `AppLifecycle`).
   ///
   /// The device model and OS (`device.model.identifier`, `os.version`, ...)
   /// are added to the resource of native and Dart data by default.
@@ -55,6 +58,7 @@ public final class OtelFlutterBridge: @unchecked Sendable {
     resourceAttributes.forEach { resource[$0.key] = $0.value }
     queue.resource = FlutterChannelSpanExporter.attributes(resource)
     NetworkStatus.shared.start()
+    AppLifecycle.shared.start()
     var builder = TracerProviderBuilder()
       .add(spanProcessor: makeAppContextProcessor())
       .add(spanProcessor: makeSpanProcessor(scheduleDelay: scheduleDelay))
@@ -161,6 +165,22 @@ public final class OtelFlutterBridge: @unchecked Sendable {
     journeyLock.unlock()
   }
 
+  /// Asks Dart to send everything pending; `done` runs when Dart replies,
+  /// or right away when Dart is not connected. Call it on the main thread.
+  func flushDart(_ done: @escaping () -> Void) {
+    journeyLock.lock()
+    let flush = dartFlush
+    journeyLock.unlock()
+    guard let flush else { return done() }
+    flush(done)
+  }
+
+  func setDartFlush(_ flush: ((@escaping () -> Void) -> Void)?) {
+    journeyLock.lock()
+    dartFlush = flush
+    journeyLock.unlock()
+  }
+
   /// Returns `arguments` with the trace context of `span` (default: the
   /// current span, `TraceContext.current`) and its screen and flow, for a
   /// call from native code to Dart. Dart continues the trace with
@@ -184,7 +204,9 @@ public final class OtelFlutterBridge: @unchecked Sendable {
     return args
   }
 
-  /// Sends pending spans and events now.
+  /// Hands pending native spans and events to Dart now. Dart sends them
+  /// with its next export; when the app goes to the background this
+  /// happens by itself, inside a background task.
   public func flush() {
     _ = tracerProvider?.forceFlush()
     queue.flush()

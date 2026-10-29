@@ -35,10 +35,27 @@ never span data).
 When a queue is full the **oldest** item is dropped first: recent data is
 more useful for diagnosing what is happening now.
 
+## Leaving the foreground
+
+Everything pending is sent when the app leaves the foreground, so the last
+seconds before the user leaves (often the ones worth investigating) are
+not lost:
+
+- Dart: on `hidden`, `paused` and `detached` (not `inactive`, which also
+  happens for a system dialog or the app switcher).
+- iOS: on `didEnterBackground`, the native side holds a background task,
+  hands its spans and events to Dart, and asks Dart to send everything
+  (`flush` on the channel). The task ends when Dart replies, after 10 s,
+  or when iOS says time is up. On `willTerminate`, a last best-effort
+  flush.
+
+A request that fails then is lost like any other.
+
 ## Not yet (M7)
 
-Offline buffer on disk, retries, flush on background. Until then, data in
-memory is lost if the app is killed.
+Offline buffer on disk and retries. Until then, data that could not be
+sent is lost, and so is what is in memory if the app is killed before it
+leaves the foreground (a crash).
 
 ## Open questions
 

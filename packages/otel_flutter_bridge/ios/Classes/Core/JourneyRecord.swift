@@ -23,6 +23,11 @@ public enum JourneyKeys {
   public static let actionEvent = "journey.action"
   public static let flowStart = "journey.flow.start"
   public static let flowEnd = "journey.flow.end"
+
+  /// `device.app.lifecycle` (OpenTelemetry event conventions) and its
+  /// `ios.app.state`.
+  public static let appLifecycle = "device.app.lifecycle"
+  public static let iosAppState = "ios.app.state"
 }
 
 /// Random ids: 128 bits as 32 lowercase hex characters, like Dart's.

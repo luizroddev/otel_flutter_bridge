@@ -32,6 +32,7 @@ class NativeBridge {
     MethodChannel? channel,
     this.onDiagnostic,
     this.hostSession,
+    this.onFlush,
     double sampleRatio = 1.0,
   })  : _channel = channel ?? const MethodChannel(bridgeChannelName),
         _sampler = sampleRatio >= 1.0 ? null : TraceIdRatioSampler(sampleRatio);
@@ -45,6 +46,11 @@ class NativeBridge {
 
   /// Where the native session id goes, or null when Dart owns the session.
   final HostSession? hostSession;
+
+  /// Sends everything pending. Native code asks for it (`flush`) when the
+  /// app goes to the background, inside a background task, and waits for
+  /// the reply.
+  final Future<void> Function()? onFlush;
 
   /// Starts listening and signals native code that Dart is ready.
   /// Returns false when there is no native side (tests, unsupported
@@ -137,6 +143,13 @@ class NativeBridge {
         return _exportSpans(call);
       case 'exportEvents':
         return _exportEvents(call);
+      case 'flush':
+        try {
+          await onFlush?.call();
+        } catch (_) {
+          // Telemetry never breaks the app.
+        }
+        return null;
       case 'journey':
         try {
           final op = call.arguments;

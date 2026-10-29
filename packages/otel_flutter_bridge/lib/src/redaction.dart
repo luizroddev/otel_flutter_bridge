@@ -99,6 +99,7 @@ const defaultAllowedAttributes = <String>{
   journeyOutcomeKey,
   journeyOutcomeReasonKey,
   journeyDurationKey,
+  iosAppStateKey,
   // HTTP client.
   'http.request.method',
   'http.response.status_code',

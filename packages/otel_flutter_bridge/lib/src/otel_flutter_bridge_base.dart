@@ -5,6 +5,7 @@ import 'package:dartastic_opentelemetry/dartastic_opentelemetry.dart';
 import 'package:dartastic_opentelemetry/proto/opentelemetry_proto_dart.dart'
     as pb;
 import 'package:flutter/foundation.dart';
+import 'package:flutter/widgets.dart';
 
 import 'app_context.dart';
 import 'config.dart';
@@ -26,6 +27,7 @@ abstract final class OtelFlutterBridge {
   static TelemetryPipeline? _pipeline;
   static NativeBridge? _native;
   static SessionIdProvider? _session;
+  static _FlushOnBackground? _lifecycle;
 
   /// Whether [initialize] completed.
   static bool get isInitialized => _pipeline != null;
@@ -36,7 +38,12 @@ abstract final class OtelFlutterBridge {
   /// The current `session.id`, or null before [initialize].
   static String? get sessionId => _session?.currentId;
 
-  /// Configures everything. Safe to call once, early in `main()`.
+  /// Configures everything. Safe to call once, early in `main()`, after
+  /// `WidgetsFlutterBinding.ensureInitialized()`.
+  ///
+  /// Everything pending is sent when the app leaves the foreground (and,
+  /// on iOS, inside a background task the native side holds until Dart has
+  /// sent it), so the last seconds before the user leaves are not lost.
   ///
   /// Never throws: on failure the bridge stays disabled, the app keeps
   /// running and [onDiagnostic] receives `initFailed`.
@@ -166,11 +173,13 @@ abstract final class OtelFlutterBridge {
             (id, previous) => Journey.sessionStarted(id, previousId: previous);
       }
 
+      _lifecycle = _FlushOnBackground.install();
       if (connectNative) {
         _native = NativeBridge(
           pipeline,
           onDiagnostic: onDiagnostic,
           hostSession: host,
+          onFlush: flush,
           sampleRatio: config.sampleRatio,
         );
         await _native!.connect(
@@ -179,6 +188,8 @@ abstract final class OtelFlutterBridge {
         );
       }
     } catch (e) {
+      _lifecycle?.remove();
+      _lifecycle = null;
       _pipeline = null;
       _session = null;
       Journey.install(null);
@@ -219,6 +230,8 @@ abstract final class OtelFlutterBridge {
       Journey.install(null);
       Journey.reset();
       AppContext.clear();
+      _lifecycle?.remove();
+      _lifecycle = null;
       _pipeline = null;
       _native = null;
       _session = null;
@@ -231,6 +244,44 @@ abstract final class OtelFlutterBridge {
       return osAttributes(Platform.operatingSystem);
     } catch (_) {
       return const {};
+    }
+  }
+}
+
+/// Sends everything pending when the app leaves the foreground.
+class _FlushOnBackground with WidgetsBindingObserver {
+  /// Registers the observer, or returns null when there is no binding yet
+  /// (`initialize` called before `WidgetsFlutterBinding.ensureInitialized`).
+  static _FlushOnBackground? install() {
+    try {
+      final observer = _FlushOnBackground();
+      WidgetsBinding.instance.addObserver(observer);
+      return observer;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  void remove() {
+    try {
+      WidgetsBinding.instance.removeObserver(this);
+    } catch (_) {
+      // Telemetry never breaks the app.
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    switch (state) {
+      // Not on `inactive`: it also happens for a system dialog or the app
+      // switcher, and each flush is one more request.
+      case AppLifecycleState.hidden:
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+        unawaited(OtelFlutterBridge.flush());
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.resumed:
+        break;
     }
   }
 }
