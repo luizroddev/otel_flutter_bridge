@@ -180,4 +180,21 @@ OpenTelemetry Swift 2.5.1 are pinned exactly.
 
 ## License
 
-Apache 2.0. See [LICENSE](LICENSE).
+Apache 2.0. See [LICENSE](LICENSE). Commercial use is allowed; keep the
+license text and its notices when you redistribute the code.
+
+Every dependency uses a permissive license that allows commercial use:
+
+| Dependency | License |
+|---|---|
+| `dartastic_opentelemetry` and its API | Apache 2.0 |
+| OpenTelemetry Swift (API and SDK pods) | Apache 2.0 |
+| `http`, `fixnum` and the other Dart packages they pull in | BSD-3-Clause, MIT or Apache 2.0 |
+| `dio` (only in `otel_flutter_bridge_dio`) | MIT |
+
+## Trademarks
+
+OpenTelemetry is a trademark of The Linux Foundation. Flutter and Dart are
+trademarks of Google LLC. This is an independent project: it is not
+affiliated with, sponsored by or endorsed by the OpenTelemetry project, The
+Linux Foundation or Google. The names describe what the library works with.
