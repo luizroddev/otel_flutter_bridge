@@ -42,6 +42,9 @@ class _ScenariosPageState extends State<ScenariosPage> {
                     'Destino OTLP: ${PocConfig.endpoint.isEmpty ? '(só memória)' : PocConfig.endpoint}',
                     style: mono),
                 Text('Backend demo: ${PocConfig.demoBackend}', style: mono),
+                Text(
+                    'Sessão e envio: ${PocConfig.hostMode ? 'app nativo (POC_HOST=1)' : 'biblioteca'}',
+                    style: mono),
                 Text('Jaeger UI: http://localhost:16686', style: mono),
                 SwitchListTile(
                   contentPadding: EdgeInsets.zero,

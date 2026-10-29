@@ -2,6 +2,7 @@ import 'dart:io';
 
 import 'package:dartastic_opentelemetry/proto/opentelemetry_proto_dart.dart'
     as pb;
+import 'package:flutter/services.dart';
 import 'package:otel_flutter_bridge/otel_flutter_bridge.dart';
 
 /// Everything specific to one app lives here, never in the library.
@@ -29,6 +30,29 @@ abstract final class PocConfig {
   static String get demoBackend =>
       _backend.isNotEmpty ? _backend : 'http://$_host:8080';
 
+  /// Host mode, as an existing native app runs the library: the native side
+  /// owns the session and sends the telemetry with the app's HTTP client
+  /// (see AppDelegate.swift). Turn it on with an environment variable:
+  ///
+  ///   SIMCTL_CHILD_POC_HOST=1 xcrun simctl launch booted \
+  ///     dev.luizrod.otelFlutterBridgeExample
+  ///
+  /// or `POC_HOST=1` in the Xcode scheme's environment. Dart cannot read
+  /// the environment on iOS, so it asks Swift (see [loadHostMode]).
+  static bool hostMode = false;
+
+  /// Asks the native side whether host mode is on. Call before
+  /// `OtelFlutterBridge.initialize`.
+  static Future<void> loadHostMode() async {
+    try {
+      hostMode = await const MethodChannel('poc/host')
+              .invokeMethod<bool>('hostMode') ??
+          false;
+    } on MissingPluginException {
+      hostMode = false; // no native side (Android, tests)
+    }
+  }
+
   static OtelBridgeConfig bridgeConfig() => OtelBridgeConfig(
         serviceName: 'otel-bridge-poc',
         serviceVersion: '0.1.0',
@@ -36,6 +60,9 @@ abstract final class PocConfig {
         // Fictional: on iOS a real app passes identifierForVendor.
         installationId: 'demo-install-1',
         exportLogs: _logs,
+        sendThroughNative: hostMode,
+        gzip: hostMode,
+        session: SessionConfig(fromHost: hostMode),
         endpoint: Uri.parse(endpoint.isEmpty ? 'http://unused' : endpoint),
         redaction: const RedactionConfig(
           // Extension point: extra patterns for this app's own identifiers.

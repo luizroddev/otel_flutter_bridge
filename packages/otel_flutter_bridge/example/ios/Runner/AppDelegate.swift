@@ -5,6 +5,10 @@ import UIKit
 
 @main
 @objc class AppDelegate: FlutterAppDelegate, FlutterImplicitEngineDelegate {
+  /// Host mode (POC_HOST=1, see poc_config.dart).
+  static let hostMode = ProcessInfo.processInfo.environment["POC_HOST"] == "1"
+  private var hostChannel: FlutterMethodChannel?
+
   override func application(
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]?
@@ -14,6 +18,7 @@ import UIKit
       "os.name": .string("iOS"),
       "os.version": .string(UIDevice.current.systemVersion),
     ])
+    if AppDelegate.hostMode { startHostMode() }
 
     // 2. A span created before Dart is ready. It waits in the queue and
     //    reaches the backend in the same session as the Dart spans.
@@ -25,10 +30,30 @@ import UIKit
     return super.application(application, didFinishLaunchingWithOptions: launchOptions)
   }
 
+  /// Host mode: this app owns the session, and its own HTTP client sends
+  /// the telemetry Dart batches.
+  private func startHostMode() {
+    OtelFlutterBridge.shared.setSession(id: UUID().uuidString.lowercased())
+    OtelFlutterBridge.shared.exportHandler = { export, completion in
+      guard let request = export.urlRequest() else { return completion(false) }
+      // The app's client is traced; the request is marked as telemetry, so
+      // it never becomes a span itself.
+      TracedURLSession.dataTask(with: request) { _, response, error in
+        let status = (response as? HTTPURLResponse)?.statusCode ?? 0
+        NSLog("[poc] %@ sent by the app's client: HTTP %d", export.signal, status)
+        completion(error == nil && (200..<300).contains(status))
+      }
+    }
+  }
+
   func didInitializeImplicitFlutterEngine(_ engineBridge: FlutterImplicitEngineBridge) {
     GeneratedPluginRegistrant.register(with: engineBridge.pluginRegistry)
     guard let registrar = engineBridge.pluginRegistry.registrar(forPlugin: "PocNativeChannel") else { return }
     PocNativeChannel.register(messenger: registrar.messenger())
+    // Dart cannot read the environment on iOS: it asks here.
+    let host = FlutterMethodChannel(name: "poc/host", binaryMessenger: registrar.messenger())
+    host.setMethodCallHandler { _, result in result(AppDelegate.hostMode) }
+    hostChannel = host
   }
 }
 
