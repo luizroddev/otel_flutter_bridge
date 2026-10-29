@@ -137,6 +137,7 @@ on<LoadOrders>(tracedHandler('orders.load', _onLoadOrders));
 | `packages/otel_flutter_bridge/example` | POC app: scenarios + inspector |
 | `tools/demo_backend` | Tiny server that continues the trace |
 | `native_tests/ios` | `swift test` for the Foundation-only iOS core |
+| `docs/architecture.md` | How it works, in diagrams: components, startup, one action end to end, the journey shared by Swift and Dart, the pipeline, sessions, background, sending through the app's network stack |
 | `docs/specs` | The specs (configuration, session, naming, redaction, failure, native bridge, journey) |
 | `docs/adr` | Architecture decision records |
 | `docs/extension-points.md` | Every seam for app-specific customization |

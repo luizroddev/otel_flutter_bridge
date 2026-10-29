@@ -71,6 +71,7 @@ Leia antes de qualquer código, nesta ordem:
 1. O **guia de adoção** (`docs/adoption-guide.pt-BR.md` da biblioteca).
    Ele resume todos os contratos; a seção 15 é a referência rápida.
 2. Na biblioteca:
+   - `docs/architecture.md`, os diagramas de como ela funciona;
    - `docs/specs/journey.md`, o contrato do que o app envia;
    - `docs/specs/native-bridge.md`;
    - `docs/specs/session.md`;
@@ -80,6 +81,7 @@ Leia antes de qualquer código, nesta ordem:
    - o `CHANGELOG.md`.
 3. No dashboard:
    - o `README.md`;
+   - `docs/architecture.md`, os diagramas de como ele funciona;
    - `docs/backend-integration.md`;
    - `docs/storage-schema.md`, o contrato do banco;
    - `docs/query-api.md`.

@@ -65,28 +65,40 @@ Sumário:
 
 ## 2. Arquitetura em uma página
 
-```text
-┌───────────────────────────── aparelho ─────────────────────────────┐
-│ Flutter (Dart)                         iOS nativo (Swift)          │
-│  Journey: telas, fluxos, ações          Journey: telas nativas     │
-│  spans: OTel Dart SDK                   spans: OTel Swift          │
-│        │                                     │                     │
-│        └──────── canal da plataforma ────────┘                     │
-│          (spans e eventos nativos, estado da jornada, contexto)    │
-│        ▼                                                           │
-│  Pipeline único (Dart): sessão → redação → fila → envio            │
-│        │ OTLP/HTTP protobuf: /v1/traces e /v1/logs                 │
-│        │ (pelo HTTP do Dart, ou pela rede do app nativo)           │
-└────────┼───────────────────────────────────────────────────────────┘
-         ▼
-  Receptor: um collector, o backend do app, ou o receptor do dashboard
-  (autentica, carimba o aparelho, filtra, insere)
-         ▼
-  MongoDB: spans e events (só inserção)
-         ▼
-  Dashboard (MODE=query): agrega sessions e rollups, serve a interface
-  e a API, atrás do SSO do portal
+```mermaid
+flowchart TB
+  subgraph aparelho["Aparelho"]
+    direction LR
+    subgraph dart["Flutter (Dart)"]
+      JD["Journey<br/>telas · fluxos · ações · usuário"]
+      SD["Spans<br/>OTel Dart SDK"]
+    end
+    subgraph swift["iOS nativo (Swift)"]
+      JS["Journey<br/>telas nativas"]
+      SS["Spans<br/>OTel Swift · HTTP · canais"]
+    end
+    JS <-->|"canal: estado da jornada,<br/>spans e eventos nativos, contexto"| JD
+    JD --> PIPE
+    SD --> PIPE
+    SS -->|"canal"| PIPE
+    PIPE["Pipeline único (Dart)<br/>sessão · redação · fila · envio"]
+  end
+  PIPE -->|"OTLP/HTTP protobuf<br/>/v1/traces · /v1/logs<br/>(HTTP do Dart ou rede do app)"| REC
+  REC["Receptor<br/>collector · backend do app · receptor do dashboard<br/>autentica · carimba o aparelho · filtra · insere"]
+  REC -->|"só inserção"| DB[("MongoDB<br/>spans · events")]
+  DB --> AGG["Dashboard (MODE=query)<br/>agrega sessions e rollups"]
+  AGG --> UI["Interface e API<br/>atrás do SSO do portal"]
+  UI -.->|"link do trace"| LOGS["Ferramenta de logs"]
 ```
+
+Os diagramas detalhados de cada lado:
+
+- [arquitetura da biblioteca](architecture.md): componentes, a
+  inicialização, uma ação de ponta a ponta, a jornada compartilhada, o
+  pipeline, sessões, segundo plano e envio pela rede do app;
+- [arquitetura do dashboard](https://github.com/luizroddev/otel-journey-dashboard/blob/main/docs/architecture.md):
+  modos, onde roda, o receptor, o agregador, as coleções, as páginas e a
+  montagem da jornada.
 
 Peças e contratos:
 
@@ -133,6 +145,43 @@ deixaria os filhos órfãos. Por isso fluxos são eventos, não spans longos.
 
 `completed` quer dizer "o código terminou e o app não disse se deu certo".
 Nunca é tratado como sucesso.
+
+Como as peças se encaixam:
+
+```mermaid
+classDiagram
+  direction LR
+  class Instalacao["Instalação"] {
+    app.installation.id
+  }
+  class Sessao["Sessão"] {
+    session.id
+    session.previous_id
+  }
+  class Execucao["Execução de fluxo"] {
+    journey.flow.name
+    journey.flow.instance_id
+    journey.outcome
+    journey.outcome_reason
+  }
+  class Acao["Ação"] {
+    journey.action.name
+    journey.outcome
+    journey.duration_ms
+  }
+  class Tela["Tela vista"] {
+    app.screen.name
+  }
+  class Trace {
+    trace_id
+  }
+  Instalacao "1" --> "*" Sessao : tem
+  Sessao "1" --> "*" Tela : registra
+  Sessao "1" --> "*" Execucao : registra
+  Execucao "1" --> "*" Execucao : aninha
+  Execucao "1" --> "*" Acao : contém
+  Acao "1" --> "0..1" Trace : ação medida
+```
 
 ---
 
@@ -266,6 +315,18 @@ do próprio sistema.
 | **D. Um OpenTelemetry Collector no meio** | A empresa já opera collectors e quer replicar para outras ferramentas | O collector exporta OTLP/HTTP para o receptor (opção B ou C); não há exportador oficial para este schema do MongoDB |
 
 Recomendação: **A** quando existe backend; **B** como passo intermediário.
+
+```mermaid
+flowchart TD
+  Q1{"Existe um backend do app que<br/>autentica o aparelho e o usuário?"}
+  Q1 -->|"não"| Q4{"É produção?"}
+  Q4 -->|"não: pessoal ou teste"| C["C: direto ao receptor<br/>do dashboard (MODE=all)"]
+  Q4 -->|"sim"| BUILD["Crie o receptor no backend<br/>antes de ir a produção"]
+  Q1 -->|"sim"| Q2{"Ele pode gravar<br/>no MongoDB?"}
+  Q2 -->|"sim"| A["A: o backend insere spans e events<br/>dashboard em MODE=query"]
+  Q2 -->|"ainda não"| B["B: o backend repassa ao MODE=ingest<br/>com headers confiáveis"]
+  Q1 -->|"a empresa já opera collectors"| D["D: collector exporta OTLP<br/>para o receptor (B ou C)"]
+```
 
 ### D2. Como a telemetria sai do aparelho
 
@@ -1058,6 +1119,16 @@ O identificador pessoal **não** entra na telemetria.
   progresso em `jobs`.
 - Na primeira execução, reconstrói tudo a partir dos registros guardados.
 - Sessões aparecem cerca de 1 minuto depois de chegar.
+
+```mermaid
+flowchart LR
+  H["Acontece no app"] -->|"lote de até 2 s,<br/>ou ao sair do primeiro plano"| E["Enviado"]
+  E -->|"rede"| I["Inserido<br/>receivedAt"]
+  I -->|"30 s de atraso +<br/>até 15 s"| A["Agregado"]
+  A --> V["Na lista de sessões e<br/>na visão geral (~1 min)"]
+  I -->|"RETENTION_DAYS"| X["Registros e sessões expiram"]
+  A -->|"ROLLUP_RETENTION_DAYS"| Y["Contadores por hora expiram"]
+```
 
 ---
 
