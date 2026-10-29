@@ -143,6 +143,8 @@ on<LoadOrders>(tracedHandler('orders.load', _onLoadOrders));
 | `docs/roadmap.md` | Milestones |
 | `docs/integration-guide.pt-BR.md` | Step-by-step guide (Portuguese) to add the library to an existing add-to-app project |
 | `docs/app-instrumentation-guide.pt-BR.md` | How to review an app (http, dio, Bloc, Cubit, channels) and instrument it, case by case (Portuguese) |
+| `docs/adoption-guide.pt-BR.md` | Adopting the library and the journey dashboard in another system: discovery, decisions, app, native, receiver, dashboard, volume, privacy, validation, rollout (Portuguese) |
+| `docs/adoption-prompt.pt-BR.md` | A ready-to-use prompt for an AI coding agent to run that adoption phase by phase (Portuguese) |
 
 ## Development
 
