@@ -1,3 +1,8 @@
+## 0.2.0-dev.1
+
+- No changes; released together with the core. Requires the core
+  0.2.0-dev.1.
+
 ## 0.1.0-dev.3
 
 - No changes; released together with the core.

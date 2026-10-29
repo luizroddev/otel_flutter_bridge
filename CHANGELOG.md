@@ -3,7 +3,7 @@
 All notable changes. Format based on Keep a Changelog; versions follow
 semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
 
-## Unreleased
+## 0.2.0-dev.1
 
 - Journey (`Journey`): screens, flows and actions declared as plain enums
   (`JourneyScreen`, `JourneyFlow`, `JourneyAction`). `Journey.screen`,
@@ -85,6 +85,8 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
   `markAsTelemetry()` are never traced by `HTTPClientSpan`.
 - `OtelBridgeConfig.gzip`: compressed request bodies
   (`Content-Encoding: gzip`), on both transports.
+- Example app: host mode (`POC_HOST=1`), where the native side owns the
+  session and its own HTTP client sends the telemetry.
 
 ## 0.1.0-dev.3
 
