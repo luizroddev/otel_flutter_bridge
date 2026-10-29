@@ -15,8 +15,8 @@ Pré-requisito: a biblioteca já inicializada (passos 1 a 3 do
 | `OtelDioInterceptor` para dio | Quais hosts recebem `traceparent` (`propagateTo`) |
 | `tracedHandler` para handlers de Bloc | Quais handlers rastrear e o nome de cada span |
 | `invokeTraced` para canais | Atributos `app.*` (`enrich`, `enrichers`) |
-| `AppContext` (tela e fluxo carimbados no início de cada span) | Quando atualizar a tela e o fluxo (navegação) |
-| iOS: `HTTPClientSpan`, `traced(channel:)`, `invokeTraced`, `span`, `bind`, `task`, `appContext` | O ponto único de rede (Alamofire), o registro dos canais, as telas nativas |
+| `Journey` e `JourneyNavigatorObserver` (telas, fluxos, ações e usuário como eventos; tela e fluxo carimbados no início de cada span) | Quais telas, fluxos, ações e motivos existem (enums) e onde cada fluxo começa e termina |
+| iOS: `HTTPClientSpan`, `traced(channel:)`, `invokeTraced`, `span`, `bind`, `task`, `Journey` | O ponto único de rede (Alamofire), o registro dos canais, as telas nativas |
 | Redação, sessão, exportação | Padrões extras de redação para ids próprios |
 
 Nada é automático: só é rastreado o que passa por essas peças. Isso é
@@ -184,30 +184,31 @@ getIt.registerSingleton<http.Client>(buildHttpClient());
 ```
 
 ```dart
-// lib/telemetry/screen_observer.dart
-// Atualiza a tela atual a cada navegação. Use nomes de rota fixos
-// ('order.detail'), nunca o caminho com ids ('/orders/123').
-class TelemetryScreenObserver extends NavigatorObserver {
-  void _set(Route<dynamic>? route) {
-    final name = route?.settings.name;
-    if (name != null) AppContext.screen = name;
-  }
-
-  @override
-  void didPush(Route route, Route? previousRoute) => _set(route);
-  @override
-  void didPop(Route route, Route? previousRoute) => _set(previousRoute);
-  @override
-  void didReplace({Route? newRoute, Route? oldRoute}) => _set(newRoute);
-}
-
-// Fluxo: marque o início e o fim da jornada onde ela começa e termina.
-AppContext.flow = 'purchase';   // ao entrar no checkout
-AppContext.flow = null;         // ao concluir ou abandonar
+// lib/telemetry/journey.dart
+// Telas, fluxos, ações e motivos do app. O código é o nome do valor: nunca
+// mude o sentido de um valor publicado.
+enum AppScreen with JourneyScreen { home, orderList, orderDetail, checkout }
+enum AppFlow with JourneyFlow { purchase, login }
+enum AppAction with JourneyAction { confirmPurchase, chooseBiometric }
+enum PurchaseReason with JourneyReason { paymentDeclined, outOfStock }
 ```
 
-Com `go_router` ou `auto_route`, faça o mesmo no listener do router, com o
-**nome** da rota (não a `location`).
+```dart
+// Telas: a cada navegação, pelo nome fixo da rota ('order.detail'), nunca
+// o caminho com ids ('/orders/123'). screenOf mapeia rotas para o enum.
+MaterialApp(navigatorObservers: [JourneyNavigatorObserver()]);
+
+// Fluxo: marque o começo e o fim onde a jornada começa e termina.
+final run = Journey.startFlow(AppFlow.purchase);   // ao entrar no checkout
+run.end(JourneyOutcome.success);                   // ao concluir
+run.end(JourneyOutcome.failure, reason: PurchaseReason.paymentDeclined);
+// Ou, de outro lugar (inclusive do Swift): Journey.flowRun(AppFlow.purchase)?.end(...)
+```
+
+Com `go_router` ou `auto_route`, chame `Journey.screen(...)` no listener do
+router, com o **nome** da rota (não a `location`). Não escreva em
+`AppContext` direto: ele carimba os spans, mas não gera os eventos da
+jornada nem chega ao lado nativo.
 
 ## 2.1 Modelo: um trace por ação, ligado pela sessão e pelo contexto
 
@@ -215,10 +216,13 @@ Com `go_router` ou `auto_route`, faça o mesmo no listener do router, com o
   handler até o HTTP, o nativo e o backend.
 - **Jornada = a sessão**: todo span tem `session.id`. Filtrar por ela mostra
   a linha do tempo do usuário.
-- **Onde o usuário estava = `app.screen.name` e `journey.flow.name`**, carimbados no
-  início de cada span (filhos herdam do pai, então um trace nunca mistura
-  telas). Permite "todos os traces do fluxo `purchase`" ou "p95 de
-  `orders.load` por tela".
+- **O que o usuário fez = os eventos da jornada** (`Journey`): telas vistas,
+  fluxos começados e terminados, ações e resultados, como logs OTLP. Não
+  dependem de um span aberto.
+- **Onde o usuário estava = `app.screen.name`, `journey.flow.name` e
+  `journey.flow.instance_id`**, carimbados no início de cada span (filhos
+  herdam do pai, então um trace nunca mistura telas). Permite "todos os
+  traces do fluxo `purchase`" ou "p95 de `orders.load` por tela".
 - **Não faça um trace por tela ou por jornada.** O span raiz só é exportado
   ao terminar: se o app for morto ou suspenso, a raiz some e os filhos ficam
   órfãos. A amostragem é por trace (a jornada inteira entra ou sai), e a
@@ -483,12 +487,16 @@ chance de erro.
 No `didFinishLaunching`, antes do engine (quando o engine sobe no launch):
 
 ```swift
-OtelFlutterBridge.shared.start(resourceAttributes: [
-  "os.name": .string("iOS"),
-  "os.version": .string(UIDevice.current.systemVersion),
-])
+OtelFlutterBridge.shared.start()                  // aparelho, iOS e conexão entram sozinhos
 HTTPClientSpan.propagateTo = ["api.meuapp.com"]  // traceparent só para a sua API
+// Se a sessão nasce no nativo (Dart: SessionConfig(fromHost: true)):
+OtelFlutterBridge.shared.setSession(id: sessao.id)
 ```
+
+Se a telemetria precisa sair pela rede do app (pinning, headers do
+gateway), use `sendThroughNative: true` no Dart e `exportHandler` aqui; o
+pedido vem marcado e o `HTTPClientSpan` não o rastreia
+([native-bridge.md](specs/native-bridge.md#sending-through-the-apps-network-stack)).
 
 Spans nativos criados antes do Dart ficar pronto esperam numa fila (512, os
 mais antigos saem primeiro) e entram na mesma sessão. A amostragem
@@ -734,21 +742,26 @@ como pai (inclusive dentro de `task { }` e de callbacks com `bind`), e
 No `viewDidAppear` da base class (ou no coordinator), com nomes fixos:
 
 ```swift
+enum AppScreen: String, JourneyScreen { case orderList, document }
+
 class BaseViewController: UIViewController {
-  /// Nome fixo da tela para a telemetria, ex.: "Orders.list".
-  var telemetryScreen: String? { nil }
+  /// Tela para a jornada, ou nil para não registrar.
+  var journeyScreen: AppScreen? { nil }
 
   override func viewDidAppear(_ animated: Bool) {
     super.viewDidAppear(animated)
-    if let name = telemetryScreen { OtelFlutterBridge.shared.appContext.screen = name }
+    if let screen = journeyScreen { Journey.screen(screen) }
   }
 }
 ```
 
-Fluxo: `OtelFlutterBridge.shared.appContext.flow = "orders"` ao começar
-a jornada, `nil` ao terminar. Telas Flutter são definidas no Dart
-(`AppContext`); spans nativos filhos de um handler Dart recebem a tela e o
-fluxo do Dart pelo canal, então um trace nunca mistura telas.
+Fluxos e ações nativas usam a mesma API do Dart: `Journey.startFlow`,
+`Journey.event`, `Journey.begin(...)` / `end(...)` para ações medidas (a
+forma natural com callbacks) e `Journey.flowRun(flow)?.end(...)`. A tela
+atual, os fluxos abertos e o usuário são os mesmos nos dois lados: um fluxo
+que começa numa tela nativa e termina numa tela Flutter é uma execução só.
+Spans nativos filhos de um handler Dart recebem a tela e o fluxo do Dart
+pelo canal, então um trace nunca mistura telas.
 
 ### 4.8 Erros no nativo
 
@@ -771,11 +784,15 @@ próprios em `RedactionConfig.extraPatterns`. Prefira códigos fixos em
 ## 6. Ordem de entrega
 
 1. Revisão (seção 1) preenchida e revisada por alguém do time.
-2. Client único no composition root, com `OtelHttpClient` ou o interceptor
+2. Jornada do primeiro fluxo: enums, `JourneyNavigatorObserver`,
+   `Journey.startFlow` / `end`, as ações que importam e `Journey.setUser`.
+   Telas nativas do fluxo com o `Journey` do Swift.
+3. Client único no composition root, com `OtelHttpClient` ou o interceptor
    do dio. Só isso já gera spans HTTP com `session.id`.
-3. `tracedHandler` nos handlers do primeiro fluxo.
-4. `invokeTraced` + lado nativo, se o fluxo passa pelo nativo.
-5. Validação (seção 8). Depois, expandir fluxo a fluxo.
+4. `Journey.track` ou `tracedHandler` nas ações do fluxo, para o trace de
+   cada uma.
+5. `invokeTraced` + lado nativo, se o fluxo passa pelo nativo.
+6. Validação (seção 8). Depois, expandir fluxo a fluxo.
 
 ## 7. Checklist de code review da instrumentação
 
@@ -789,8 +806,10 @@ próprios em `RedactionConfig.extraPatterns`. Prefira códigos fixos em
 - [ ] Handlers de alta frequência não usam `tracedHandler`.
 - [ ] Um handler com várias operações usa `nameOf` (ou foi separado sem
       mudar o `transformer`).
-- [ ] Tela e fluxo vêm de `AppContext`, com nomes de rota fixos; nenhum
-      `enricher` lê a tela atual.
+- [ ] Telas, fluxos e ações vêm de `Journey` (enums, nomes fixos), nunca
+      de escrita direta em `AppContext`; nenhum `enricher` lê a tela atual.
+- [ ] Todo `Journey.startFlow` tem um `end` com resultado nos caminhos de
+      sucesso, falha e cancelamento (de qualquer um dos lados).
 - [ ] iOS: todo `HTTPClientSpan.start` tem `finish` em todos os caminhos
       (sucesso, erro, cancelamento); nenhuma requisição dos fluxos sai do
       cliente HTTP sem passar pelo ponto único.
@@ -809,7 +828,10 @@ próprios em `RedactionConfig.extraPatterns`. Prefira códigos fixos em
 
 - **Inspetor** (`TelemetryInspectorPage`): o fluxo aparece como árvore
   `handler → HTTP`, com o contador de atributos removidos.
-- **Jaeger**: o mesmo trace com os spans do backend.
+- **Dashboard de jornada**: a sessão com telas, fluxos e ações em ordem; cada
+  ação abre o seu trace.
+- **Ferramenta de traces** (Jaeger ou a do backend): o mesmo trace com os
+  spans do backend.
 - **Teste automatizado no app**, com transporte em memória:
 
 ```dart
