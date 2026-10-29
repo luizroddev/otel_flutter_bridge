@@ -24,7 +24,7 @@ Allowed by default (`defaultAllowedAttributes`): `service.name`,
 `journey.outcome`, `journey.outcome_reason`, `journey.duration_ms`),
 `http.request.method`, `http.response.status_code`, `http.route`,
 `url.scheme`, `url.path`, `server.address`, `server.port`,
-`network.protocol.version`, `error.type`, `exception.type`,
+`network.protocol.version`, `network.connection.type`, `error.type`, `exception.type`,
 `exception.message`, `rpc.system`, `rpc.service`, `rpc.method`,
 `otel_flutter_bridge.source`.
 

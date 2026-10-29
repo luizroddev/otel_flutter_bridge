@@ -90,7 +90,9 @@ mixin JourneyReason on Enum {
 /// their name); anything else is dropped.
 typedef JourneyAttributes = Map<String, Object?>;
 
-/// One run of a flow, from `Journey.startFlow` to [end].
+/// One run of a flow, from `Journey.startFlow` to [end]. A run started in
+/// native code (Swift `Journey.startFlow`) is one too: either side can end
+/// it.
 class JourneyFlowRun {
   JourneyFlowRun._(
     this.code,
@@ -99,6 +101,33 @@ class JourneyFlowRun {
     this.parentInstanceId,
     this._start,
   );
+
+  static JourneyFlowRun? _fromWire(Object? wire) {
+    if (wire is! Map) return null;
+    final code = wire['code'];
+    final id = wire['instanceId'];
+    final start = wire['startUnixNano'];
+    if (code is! String || id is! String || id.isEmpty || start is! int) {
+      return null;
+    }
+    final label = wire['label'];
+    final parent = wire['parentInstanceId'];
+    return JourneyFlowRun._(
+      code,
+      label is String ? label : null,
+      id,
+      parent is String ? parent : null,
+      DateTime.fromMicrosecondsSinceEpoch(start ~/ 1000),
+    );
+  }
+
+  Map<String, Object?> get _wire => {
+        'code': code,
+        'label': label,
+        'instanceId': instanceId,
+        'parentInstanceId': parentInstanceId,
+        'startUnixNano': _start.microsecondsSinceEpoch * 1000,
+      };
 
   /// The flow's code.
   final String code;
@@ -164,22 +193,44 @@ class JourneyFlowRun {
 ///
 /// Never throws because of telemetry. Before `OtelFlutterBridge.initialize`
 /// the app context is still updated, but nothing is recorded.
+///
+/// With the native side connected, the current screen, the open flow runs
+/// and the user are shared with the Swift `Journey`: a flow started on a
+/// native screen can end on a Flutter one, and the other way round.
 abstract final class Journey {
   static JourneyRecorder? _recorder;
   // Runs not ended, oldest first. The last one is the current flow.
   static final _flows = <JourneyFlowRun>[];
   static final _random = Random.secure();
+  // Mirrors each change on the native side. Set by the native bridge.
+  static void Function(Map<String, Object?> op)? _sync;
 
   /// The current user id, or null.
   static String? get userId => AppContext.userId;
 
   /// Sets the user (`user.id`) of what happens from now on; null clears it
   /// (logout). Use an opaque id, never an e-mail or a document number.
-  static void setUser(String? id) =>
-      AppContext.userId = id == null || id.isEmpty ? null : id;
+  static void setUser(String? id) {
+    final value = id == null || id.isEmpty ? null : id;
+    AppContext.userId = value;
+    _send({'op': 'user', 'id': value});
+  }
 
   /// The flow run started last and not ended, or null.
   static JourneyFlowRun? get currentFlow => _flows.isEmpty ? null : _flows.last;
+
+  /// The open run of [flow] started last, here or in native code, or null.
+  /// Use it to end on this side a run started on the other:
+  ///
+  /// ```dart
+  /// Journey.flowRun(AppFlow.login)?.end(JourneyOutcome.success);
+  /// ```
+  static JourneyFlowRun? flowRun(JourneyFlow flow) {
+    for (final run in _flows.reversed) {
+      if (run.code == flow.code) return run;
+    }
+    return null;
+  }
 
   /// The user entered [screen]. Sets the current screen and records an
   /// `journey.screen.view` event.
@@ -196,6 +247,7 @@ abstract final class Journey {
     JourneyAttributes attributes = const {},
   }) {
     AppContext.screen = code;
+    _send({'op': 'screen', 'code': code});
     _emit(eventScreenView, {journeyScreenLabelKey: label, ...attributes});
   }
 
@@ -218,9 +270,8 @@ abstract final class Journey {
       currentFlow?.instanceId,
       DateTime.now(),
     );
-    _flows.add(run);
-    AppContext.flow = run.code;
-    AppContext.flowInstanceId = run.instanceId;
+    _addFlow(run);
+    _send({'op': 'flowStart', 'run': run._wire});
     _emit(eventFlowStart, {
       journeyFlowLabelKey: run.label,
       journeyFlowParentInstanceKey: run.parentInstanceId,
@@ -229,7 +280,13 @@ abstract final class Journey {
     return run;
   }
 
-  static void _removeFlow(JourneyFlowRun run) {
+  static void _addFlow(JourneyFlowRun run) {
+    _flows.add(run);
+    AppContext.flow = run.code;
+    AppContext.flowInstanceId = run.instanceId;
+  }
+
+  static void _removeFlow(JourneyFlowRun run, {bool send = true}) {
     _flows.remove(run);
     // Only when the app context still points at this run: a value the app
     // set by hand is left alone.
@@ -237,6 +294,15 @@ abstract final class Journey {
       final top = currentFlow;
       AppContext.flow = top?.code;
       AppContext.flowInstanceId = top?.instanceId;
+    }
+    if (send) _send({'op': 'flowEnd', 'instanceId': run.instanceId});
+  }
+
+  static void _send(Map<String, Object?> op) {
+    try {
+      _sync?.call(op);
+    } catch (_) {
+      // Telemetry never breaks the app.
     }
   }
 
@@ -449,6 +515,79 @@ abstract final class Journey {
     } catch (_) {
       // Telemetry never breaks the app.
     }
+  }
+}
+
+/// Mirrors every change of the journey state (screen, flow runs, user) with
+/// [send], or stops with null. Library use: the native bridge sends them to
+/// the Swift `Journey`. See `docs/specs/native-bridge.md`.
+void setJourneySync(void Function(Map<String, Object?> op)? send) =>
+    Journey._sync = send;
+
+/// The journey state, as sent to the native side in `ready`. Library use.
+Map<String, Object?> journeyState() => {
+      'screen': AppContext.screen,
+      'userId': AppContext.userId,
+      'flows': [for (final run in Journey._flows) run._wire],
+    };
+
+/// Applies one change made on the native side, without sending it back.
+/// Unknown or malformed changes are ignored. Library use.
+void applyJourneyOp(Object? op) {
+  if (op is! Map) return;
+  switch (op['op']) {
+    case 'screen':
+      final code = op['code'];
+      AppContext.screen = code is String ? code : null;
+    case 'user':
+      final id = op['id'];
+      AppContext.userId = id is String && id.isNotEmpty ? id : null;
+    case 'flowStart':
+      final run = JourneyFlowRun._fromWire(op['run']);
+      if (run != null &&
+          !Journey._flows.any((r) => r.instanceId == run.instanceId)) {
+        Journey._addFlow(run);
+      }
+    case 'flowEnd':
+      final id = op['instanceId'];
+      for (final run in List.of(Journey._flows)) {
+        if (run.instanceId == id) {
+          run._ended = true;
+          Journey._removeFlow(run, send: false);
+        }
+      }
+  }
+}
+
+/// Replaces the journey state with [state] from the native side (the reply
+/// to `ready`), without sending anything back. Runs missing from [state]
+/// count as ended elsewhere. Library use.
+void applyJourneyState(Object? state) {
+  if (state is! Map) return;
+  final screen = state['screen'];
+  final user = state['userId'];
+  AppContext.screen = screen is String ? screen : null;
+  AppContext.userId = user is String && user.isNotEmpty ? user : null;
+  final flows = state['flows'];
+  final runs = flows is List
+      ? flows.map(JourneyFlowRun._fromWire).nonNulls.toList()
+      : const <JourneyFlowRun>[];
+  final keep = {for (final r in runs) r.instanceId};
+  for (final run in List.of(Journey._flows)) {
+    if (!keep.contains(run.instanceId)) {
+      run._ended = true;
+      Journey._removeFlow(run, send: false);
+    }
+  }
+  for (final run in runs) {
+    if (!Journey._flows.any((r) => r.instanceId == run.instanceId)) {
+      Journey._addFlow(run);
+    }
+  }
+  final top = Journey.currentFlow;
+  if (top != null) {
+    AppContext.flow = top.code;
+    AppContext.flowInstanceId = top.instanceId;
   }
 }
 

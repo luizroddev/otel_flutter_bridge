@@ -108,6 +108,7 @@ const defaultAllowedAttributes = <String>{
   'server.address',
   'server.port',
   'network.protocol.version',
+  networkConnectionTypeKey,
   // Errors.
   'error.type',
   'exception.type',

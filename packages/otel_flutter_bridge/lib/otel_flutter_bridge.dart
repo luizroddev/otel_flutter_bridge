@@ -22,7 +22,12 @@ export 'src/journey.dart'
         JourneyReason,
         JourneyScreen;
 export 'src/journey_navigator_observer.dart';
-export 'src/native_batch.dart' show DecodedNativeBatch, decodeNativeBatch;
+export 'src/native_batch.dart'
+    show
+        DecodedNativeBatch,
+        DecodedNativeEvents,
+        decodeNativeBatch,
+        decodeNativeEvents;
 export 'src/native_bridge.dart';
 export 'src/otel_flutter_bridge_base.dart';
 export 'src/pipeline.dart';

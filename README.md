@@ -102,6 +102,12 @@ session.request(call.request).validate().responseData { response in
 
 // Native → Flutter, in the same trace (Dart: setTracedMethodCallHandler).
 channel.invokeTraced("cartUpdated")
+
+// Native screens: the same journey API, shared with Dart.
+enum AppScreen: String, JourneyScreen { case address }
+enum AppFlow: String, JourneyFlow { case checkout }
+Journey.screen(AppScreen.address)
+Journey.flowRun(AppFlow.checkout)?.end(.success)   // a run Flutter started
 ```
 
 ```dart
@@ -152,8 +158,7 @@ pull request.
   receiving side; generic propagation is M7.
 - Native crash capture is out of scope; keep your crash reporter.
 - Traces and journey events (OTLP logs). Metrics and free-form logs are out
-  of scope. The journey API is Dart only for now; native spans still carry
-  screen and flow.
+  of scope.
 - Destinations that take traces only (Jaeger) need
   `OtelBridgeConfig(exportLogs: false)`.
 

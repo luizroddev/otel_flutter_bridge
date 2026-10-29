@@ -9,6 +9,7 @@ Pod::Spec.new do |s|
   s.source           = { :path => '.' }
   s.source_files     = 'Classes/**/*.swift'
   s.dependency 'Flutter'
+  s.frameworks = 'Network'
   # Pinned exactly, so each release documents the reviewed versions. See docs/adr/0004.
   s.dependency 'OpenTelemetry-Swift-Api', '2.5.1'
   s.dependency 'OpenTelemetry-Swift-Sdk', '2.5.1'

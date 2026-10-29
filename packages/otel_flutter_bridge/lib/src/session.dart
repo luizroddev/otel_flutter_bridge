@@ -74,6 +74,31 @@ class SessionManager implements SessionIdProvider {
   }
 }
 
+/// The session of the native app, when it owns the session
+/// (`SessionConfig.fromHost`). The native side sends its id through the
+/// bridge; until it does, [fallback] gives one. Starting a session (and its
+/// `session.start` event) is the native side's job.
+class HostSession implements SessionIdProvider {
+  /// Creates a host session that uses [fallback] until the host sends one.
+  HostSession(this.fallback);
+
+  /// Used until the host sends a session id.
+  final SessionIdProvider fallback;
+
+  String? _id;
+
+  /// The id the host sent, or null.
+  String? get hostId => _id;
+
+  /// Sets the host's current session id. Empty values are ignored.
+  void set(String? id) {
+    if (id != null && id.isNotEmpty) _id = id;
+  }
+
+  @override
+  String get currentId => _id ?? fallback.currentId;
+}
+
 /// Generates a 128-bit random id as 32 lowercase hex characters.
 String newSessionId(Random random) {
   final sb = StringBuffer();

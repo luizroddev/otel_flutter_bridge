@@ -46,6 +46,7 @@ enum PocNativeChannel {
       case "loadCart": loadCart(call.arguments, result: result)
       case "nativeFailure": nativeFailure(result: result)
       case "notifyFlutter": notifyFlutter(result: result)
+      case "nativeAddress": nativeAddress(result: result)
       default: result(FlutterMethodNotImplemented)
       }
     })
@@ -84,6 +85,18 @@ enum PocNativeChannel {
     result(FlutterError(code: "payment_failed", message: "Pagamento recusado (simulado)", details: nil))
   }
 
+  /// A native screen inside a flow Flutter started: the screen and the
+  /// action are recorded here, with the same flow run, and the run ends
+  /// here. Flutter sees it ended (`checkout.isEnded`).
+  private static func nativeAddress(result: @escaping FlutterResult) {
+    Journey.screen(ShopScreen.address)
+    let confirm = Journey.begin(ShopAction.confirmAddress)
+    Thread.sleep(forTimeInterval: 0.05) // the user confirms
+    confirm.end(.success)
+    Journey.flowRun(ShopFlow.checkout)?.end(.success)
+    result("endereço confirmado na tela nativa")
+  }
+
   /// A stored callback (like a manager's queue) that later calls Flutter:
   /// `bind` keeps it in this trace, `invokeTraced` carries it to Dart.
   private static func notifyFlutter(result: @escaping FlutterResult) {
@@ -93,4 +106,23 @@ enum PocNativeChannel {
     }
     DispatchQueue.main.asyncAfter(deadline: .now() + 0.2, execute: later)
   }
+}
+
+// The fictional shop's native screens and actions. Codes are the raw
+// values and must match the Dart enums where both sides use them
+// (`checkout`).
+enum ShopScreen: String, JourneyScreen {
+  case address
+
+  var label: String? { "Endereço (nativa)" }
+}
+
+enum ShopFlow: String, JourneyFlow {
+  case checkout
+}
+
+enum ShopAction: String, JourneyAction {
+  case confirmAddress
+
+  var label: String? { "Confirmou o endereço" }
 }

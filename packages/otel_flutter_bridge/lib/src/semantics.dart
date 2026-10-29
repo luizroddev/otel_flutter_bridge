@@ -111,3 +111,8 @@ const rpcSystemFlutterChannel = 'flutter_platform_channel';
 /// Version of the native to Dart batch format. See
 /// `docs/specs/native-bridge.md`.
 const nativeBatchFormatVersion = 1;
+
+/// `network.connection.type`, from the OpenTelemetry network conventions:
+/// `wifi`, `cell`, `wired`, `unavailable` or `unknown`. Stamped by the native
+/// side on its HTTP client spans.
+const networkConnectionTypeKey = 'network.connection.type';

@@ -48,9 +48,10 @@ final class ChannelContextTests: XCTestCase {
   func testReadsScreenAndFlowFromDart() {
     let args: [String: Any] = ["_otel": ["traceparent": traceparent,
                                          "app.screen.name": "checkout.review",
-                                         "journey.flow.name": "purchase"]]
+                                         "journey.flow.name": "purchase",
+                                         "journey.flow.instance_id": "run-1"]]
     XCTAssertEqual(TraceparentCodec.appContext(fromChannelArguments: args),
-                   AppContextValues(screen: "checkout.review", flow: "purchase"))
+                   AppContextValues(screen: "checkout.review", flow: "purchase", flowId: "run-1"))
   }
 
   func testNoTraceContextMeansNoAppContext() {
@@ -66,6 +67,7 @@ final class ChannelContextTests: XCTestCase {
     XCTAssertEqual(ctx["traceparent"] as? String, traceparent)
     XCTAssertEqual(ctx["app.screen.name"] as? String, "Orders.list")
     XCTAssertNil(ctx["journey.flow.name"])
+    XCTAssertNil(ctx["journey.flow.instance_id"])
     // Round trip through the reader used by native handlers.
     XCTAssertEqual(TraceparentCodec.appContext(fromChannelArguments: ["_otel": ctx])?.screen,
                    "Orders.list")
@@ -91,10 +93,19 @@ final class HTTPSemanticsTests: XCTestCase {
     struct Validation: Error {}
     XCTAssertEqual(HTTPSemantics.errorType(statusCode: 404, error: Validation()), "404")
     XCTAssertEqual(HTTPSemantics.errorType(statusCode: 200, error: nil), nil)
-    XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: URLError(.timedOut)), "URLError")
+    XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: URLError(.timedOut)),
+                   "URLError.timedOut")
     // What URLSession actually hands back: an NSError in NSURLErrorDomain.
     let fromSession = NSError(domain: NSURLErrorDomain, code: NSURLErrorTimedOut)
-    XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: fromSession), "URLError")
+    XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: fromSession), "URLError.timedOut")
+    let offline = NSError(domain: NSURLErrorDomain, code: NSURLErrorNotConnectedToInternet)
+    XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: offline),
+                   "URLError.notConnectedToInternet")
+    // A failed certificate check (pinning) is told apart from a timeout.
+    XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: URLError(.serverCertificateUntrusted)),
+                   "URLError.serverCertificateUntrusted")
+    XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: URLError(URLError.Code(rawValue: -4242))),
+                   "URLError.-4242")
     let other = NSError(domain: "com.app.payments", code: 7)
     XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: other), "com.app.payments")
     XCTAssertEqual(HTTPSemantics.errorType(statusCode: nil, error: Validation()), "Validation")

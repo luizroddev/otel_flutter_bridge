@@ -9,9 +9,11 @@ One `MethodChannel` named `otel_flutter_bridge`, standard codec.
 
 | Direction | Method | Arguments | Reply |
 |---|---|---|---|
-| Dart → native | `ready` | `{v: 1, enabled: bool, maxBatchSize: int}` | `null`, or error `unsupported_version` |
+| Dart → native | `ready` | `{v: 1, enabled: bool, maxBatchSize: int, journey: state}` | `{journey: state, resource: {...}}`, `null` from older versions, or error `unsupported_version` |
 | Dart → native | `setEnabled` | `{enabled: bool}` | `null` |
 | native → Dart | `exportSpans` | batch (below) | `{accepted: int, rejected: int}` |
+| native → Dart | `exportEvents` | event batch (below) | `{accepted: int, rejected: int}` |
+| both | `journey` | one change of the journey state (below) | `null` |
 
 ## Batch format, version 1
 
@@ -43,6 +45,68 @@ Values that are maps are ignored. A span missing a required field is skipped
 and counted in `rejected`; the rest of the batch is kept. A batch whose `v`
 is not 1 is rejected as a whole. A future version 2 must be negotiated in
 `ready` (Dart sends the version it understands; native refuses a mismatch).
+
+## Event batch format, version 1
+
+Journey events recorded by the Swift `Journey`:
+
+```
+{
+  "v": 1,
+  "events": [
+    {
+      "name": "<event.name>",                        // required
+      "timeUnixNano": <int>,                         // required, when it happened
+      "observedTimeUnixNano": <int>,                 // optional
+      "attributes": { "<key>": string|bool|int|double|[primitives] },
+      "traceId": "<32 hex>", "spanId": "<16 hex>",   // optional, the span it happened in
+      "flags": <int>                                 // with traceId
+    }
+  ]
+}
+```
+
+Dart turns each one into an OTLP log record (`event_name` and `event.name`
+set from `name`), adds `session.id` when the event has none (Dart owns the
+session), sets `otel_flutter_bridge.source = native` and submits it with
+the Dart events: same redaction, limits and destination. Same rules as
+spans for malformed events and other versions. Native keeps at most 512
+events until `ready`, dropping the oldest.
+
+## Journey state
+
+Both sides keep the same journey state: the current screen, the open flow
+runs, the user and, when the host owns it, the session.
+
+```
+state = {
+  "screen": "<code>" | null,
+  "userId": "<id>" | null,
+  "sessionId": "<id>",                // native → Dart only, when the host owns the session
+  "flows": [ run, ... ]               // oldest first; the last one is the current flow
+}
+run = { "code", "label"?, "instanceId", "parentInstanceId"?, "startUnixNano": <int> }
+```
+
+- **`ready`**: Dart sends its state; native merges it (native values win,
+  Dart fills the gaps, runs open on either side stay open) and replies
+  with the merged state, which Dart adopts. After a hot restart Dart is
+  empty and takes the native state. The reply also carries `resource`:
+  device and OS attributes Dart adds to its resource when missing.
+- **After `ready`**, each change made with `Journey` on one side is sent to
+  the other as a `journey` call and applied there without being sent back:
+
+| `op` | Fields | Meaning |
+|---|---|---|
+| `screen` | `code` (absent: none) | The current screen |
+| `user` | `id` (absent: none) | `user.id` |
+| `flowStart` | `run` | A run started; it becomes the current flow |
+| `flowEnd` | `instanceId` | A run ended; the run it was nested in becomes current again |
+| `session` | `id` | native → Dart: the host started a session |
+
+Unknown ops and malformed fields are ignored. Native sends from the main
+thread right away, so Dart has a change before the reply of a channel call
+made after it.
 
 ## Dart side
 
@@ -114,5 +178,5 @@ memory grows unbounded.
 
 ## Open questions
 
-- Should the native side time out waiting for `ready` and discard the queue?
+- Should the native side time out waiting for `ready` and discard the queues?
 - Background flush before iOS suspends the app (M7).

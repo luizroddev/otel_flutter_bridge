@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:dartastic_opentelemetry/proto/opentelemetry_proto_dart.dart'
     as pb;
 import 'package:fixnum/fixnum.dart';
@@ -65,6 +67,68 @@ DecodedNativeBatch decodeNativeBatch(Object? payload) {
     accepted,
     rejected,
   );
+}
+
+/// Result of decoding a batch of native journey events.
+class DecodedNativeEvents {
+  /// Creates a result.
+  const DecodedNativeEvents(this.records, this.rejected);
+
+  /// Events that were decoded, as OTLP log records.
+  final List<pb.LogRecord> records;
+
+  /// Events that were malformed and skipped.
+  final int rejected;
+}
+
+/// Decodes a batch of journey events recorded by the Swift `Journey`
+/// (`exportEvents`), format version [nativeBatchFormatVersion]. See
+/// `docs/specs/native-bridge.md`.
+///
+/// Never throws: malformed events are skipped and counted, and a batch with
+/// an unknown version is rejected as a whole.
+DecodedNativeEvents decodeNativeEvents(Object? payload) {
+  if (payload is! Map) return const DecodedNativeEvents([], 0);
+  final events = payload['events'];
+  final count = events is List ? events.length : 0;
+  if (payload['v'] != nativeBatchFormatVersion || events is! List) {
+    return DecodedNativeEvents(const [], count);
+  }
+  final records = <pb.LogRecord>[];
+  for (final raw in events) {
+    final record = raw is Map ? _decodeEvent(raw) : null;
+    if (record != null) records.add(record);
+  }
+  return DecodedNativeEvents(records, count - records.length);
+}
+
+pb.LogRecord? _decodeEvent(Map<Object?, Object?> m) {
+  final name = m['name'];
+  final time = m['timeUnixNano'];
+  if (name is! String || name.isEmpty || time is! int) return null;
+  final observed = m['observedTimeUnixNano'];
+  final record = pb.LogRecord(
+    timeUnixNano: Int64(time),
+    observedTimeUnixNano: Int64(observed is int ? observed : time),
+    severityNumber: pb.SeverityNumber.SEVERITY_NUMBER_INFO,
+    severityText: 'INFO',
+    attributes: _attributes(m['attributes']),
+  );
+  // OTLP `event_name` (field 12), as the Dart recorder writes it.
+  record.unknownFields.mergeLengthDelimitedField(12, utf8.encode(name));
+  record.attributes
+    ..removeWhere((kv) => kv.key == eventNameKey)
+    ..add(
+        pb.KeyValue(key: eventNameKey, value: pb.AnyValue(stringValue: name)));
+  final traceId = _hex(m['traceId'], 16);
+  final spanId = _hex(m['spanId'], 8);
+  if (traceId != null && spanId != null) {
+    record
+      ..traceId = traceId
+      ..spanId = spanId
+      ..flags = m['flags'] is int ? m['flags'] as int : 1;
+  }
+  return record;
 }
 
 pb.Span? _decodeSpan(Map<Object?, Object?> m) {
