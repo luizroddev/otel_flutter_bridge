@@ -46,7 +46,6 @@ configuration. A stricter app uses its own prefix (`shop.`) and adds it to
 
 Do not use a name both as a key and as a prefix of other keys
 (`journey.outcome` and `journey.outcome.reason`): backends that nest dotted
-names, such as Elasticsearch, can reject one of them. Hence
-`journey.outcome_reason`.
+names can reject one of them. Hence `journey.outcome_reason`.
 
 `rpc.system` for channel calls is `flutter_platform_channel`.
