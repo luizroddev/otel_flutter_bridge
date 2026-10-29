@@ -71,6 +71,12 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
   instead of `URLError`.
 - Example app: scenario 11, a purchase that starts in Flutter and ends on a
   native screen.
+- Everything pending is sent when the app leaves the foreground: Dart on
+  `hidden` / `paused` / `detached`; on iOS, inside a background task that
+  ends when Dart replies to `flush` (or after 10 s).
+- iOS: `device.app.lifecycle` events with `ios.app.state` (`background`,
+  `foreground`, `terminate`), so the journey shows when the user left the
+  app and came back.
 
 ## 0.1.0-dev.3
 

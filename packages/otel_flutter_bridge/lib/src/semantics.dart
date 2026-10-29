@@ -87,6 +87,15 @@ const eventFlowEnd = 'journey.flow.end';
 /// semantic conventions.
 const eventSessionStart = 'session.start';
 
+/// `event.name` of an app lifecycle change, from the OpenTelemetry event
+/// conventions. Recorded by the native side (iOS: going to the background,
+/// coming back, being terminated).
+const eventAppLifecycle = 'device.app.lifecycle';
+
+/// `ios.app.state` of a [eventAppLifecycle] event: `background`,
+/// `foreground` or `terminate`.
+const iosAppStateKey = 'ios.app.state';
+
 /// Instrumentation scope of journey events.
 const journeyScopeName = 'otel_flutter_bridge.journey';
 

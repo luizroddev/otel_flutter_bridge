@@ -42,6 +42,10 @@ public class OtelFlutterBridgePlugin: NSObject, FlutterPlugin {
       bridge.setJourneySink { [weak channel = self.channel] op in
         channel?.invokeMethod("journey", arguments: op)
       }
+      bridge.setDartFlush { [weak channel = self.channel] done in
+        guard let channel else { return done() }
+        channel.invokeMethod("flush", arguments: nil) { _ in done() }
+      }
       var resource: [String: Any] = DeviceInfo.resourceAttributes
       bridge.queue.resource.forEach { resource[$0.key] = $0.value.wireValue }
       result(["journey": JourneySync.state(of: bridge.appContext), "resource": resource])

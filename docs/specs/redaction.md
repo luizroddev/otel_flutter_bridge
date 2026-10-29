@@ -22,6 +22,7 @@ Allowed by default (`defaultAllowedAttributes`): `service.name`,
 `event.name`, `log.record.uid`, `app.screen.name` and the journey keys
 (`journey.screen.label`, `journey.flow.*`, `journey.action.*`,
 `journey.outcome`, `journey.outcome_reason`, `journey.duration_ms`),
+`ios.app.state`,
 `http.request.method`, `http.response.status_code`, `http.route`,
 `url.scheme`, `url.path`, `server.address`, `server.port`,
 `network.protocol.version`, `network.connection.type`, `error.type`, `exception.type`,

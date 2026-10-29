@@ -159,6 +159,7 @@ tree).
 | `journey.flow.end` | `journey.flow.label`, `journey.flow.parent_instance_id`, `journey.outcome`, `journey.outcome_reason`, `journey.duration_ms` | `JourneyFlowRun.end` |
 | `journey.action` (instant) | `journey.action.name`, `journey.action.label`, `journey.action.instance_id`, optional `journey.outcome` and `journey.outcome_reason` | `Journey.event` |
 | `journey.action` (measured) | the above plus `journey.outcome`, `journey.duration_ms`, `error.type` on failure, and the action span's `trace_id` / `span_id` | `Journey.track` |
+| `device.app.lifecycle` | `ios.app.state`: `background`, `foreground` or `terminate` | iOS: the app goes to the background, comes back or is terminated |
 
 App attributes passed in `attributes:` are added as they are and go through
 redaction: their keys must be allowed (by default, anything under `app.`).
@@ -226,8 +227,8 @@ breaks in silence.
 | What | Values |
 |---|---|
 | Resource attributes | `service.name`, `service.version`, `deployment.environment.name`, `os.type`, `os.name`, `os.version`, `device.model.identifier`, `device.manufacturer`, `app.installation.id`, `telemetry.sdk.*` |
-| Event names | `session.start`, `journey.screen.view`, `journey.flow.start`, `journey.flow.end`, `journey.action` |
-| Event and span attributes | everything in the tables above, plus the HTTP, RPC, `network.connection.type` and error keys of [redaction.md](redaction.md) and the app's own keys |
+| Event names | `session.start`, `journey.screen.view`, `journey.flow.start`, `journey.flow.end`, `journey.action`, `device.app.lifecycle` |
+| Event and span attributes | everything in the tables above (including `ios.app.state`), plus the HTTP, RPC, `network.connection.type` and error keys of [redaction.md](redaction.md) and the app's own keys |
 | Span names | action codes chosen by the app, `{METHOD}` for HTTP, `{channel}/{method}` for channel calls. Match them with a pattern (for example `^[A-Za-z0-9_.:/-]{1,128}$`) rather than a fixed list, or every new action is rejected |
 
 ### Never scrub ids

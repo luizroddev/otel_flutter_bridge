@@ -151,8 +151,9 @@ pull request.
 ## Known limitations
 
 - Android: Dart telemetry works; the native Android bridge is planned (M7).
-- No offline buffer, retries or flush on background yet (M7). Data in memory
-  is lost if the app is killed.
+- No offline buffer or retries yet (M7). Pending data is sent when the app
+  leaves the foreground (on iOS inside a background task), but a request
+  that fails is lost, and so is data in memory if the app crashes.
 - Channel propagation is explicit: `invokeTraced` on the calling side and
   `traced(channel:)` (Swift) / `setTracedMethodCallHandler` (Dart) on the
   receiving side; generic propagation is M7.

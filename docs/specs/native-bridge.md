@@ -14,6 +14,7 @@ One `MethodChannel` named `otel_flutter_bridge`, standard codec.
 | native → Dart | `exportSpans` | batch (below) | `{accepted: int, rejected: int}` |
 | native → Dart | `exportEvents` | event batch (below) | `{accepted: int, rejected: int}` |
 | both | `journey` | one change of the journey state (below) | `null` |
+| native → Dart | `flush` | none | `null`, once Dart sent everything pending |
 
 ## Batch format, version 1
 
@@ -179,4 +180,3 @@ memory grows unbounded.
 ## Open questions
 
 - Should the native side time out waiting for `ready` and discard the queues?
-- Background flush before iOS suspends the app (M7).
