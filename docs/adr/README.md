@@ -5,7 +5,7 @@ consequences. Months later, anyone can see why the library is the way it is.
 
 | # | Decision | Status |
 |---|---|---|
-| [0001](0001-no-custom-api-over-otel.md) | No custom API over OpenTelemetry | Accepted |
+| [0001](0001-no-custom-api-over-otel.md) | No custom API over OpenTelemetry (amended: the journey API) | Accepted |
 | [0002](0002-no-swizzling-no-hooks.md) | Zero swizzling and zero hooks | Accepted |
 | [0003](0003-redaction-on-export-allowlist.md) | Redaction on export, with an allowlist | Accepted |
 | [0004](0004-two-packages.md) | Two packages: core and dio (amended: a new package only for a new dependency) | Accepted |
