@@ -37,7 +37,12 @@ No app de exemplo, rode os cenários e abra a aba **Inspetor**:
 - cenário 6: a redação (o documento some; cartão e token viram
   `[REDACTED]`);
 - cenário 10: uma jornada de loja (login com nova tentativa, depois compra);
-- cenário 11: uma compra que começa no Flutter e termina numa tela nativa.
+- cenário 11: uma compra que começa no Flutter e termina numa tela nativa;
+- modo app hospedeiro, como num app nativo que já existe: o nativo cria a
+  sessão e envia a telemetria pelo próprio cliente HTTP. Abra o app com
+  `SIMCTL_CHILD_POC_HOST=1 xcrun simctl launch booted dev.luizrod.otelFlutterBridgeExample`
+  (ou `POC_HOST=1` no esquema do Xcode); o cartão do topo mostra
+  "Sessão e envio: app nativo".
 
 O Jaeger só recebe traces: com ele, use `exportLogs: false` (a jornada não
 aparece lá).
@@ -45,8 +50,8 @@ aparece lá).
 ## 2. Dependência
 
 Enquanto os pacotes não estão no pub.dev, use o git com uma referência fixa
-(tag ou commit), nunca uma branch. A jornada exige uma versão posterior à
-`v0.1.0-dev.3`:
+(tag ou commit), nunca uma branch. A jornada exige a
+`v0.2.0-dev.1` ou posterior:
 
 ```yaml
 dependencies:

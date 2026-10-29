@@ -8,6 +8,7 @@ import 'scenarios_page.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await PocConfig.loadHostMode();
 
   // 1. Initialize once, early. Everything app-specific lives in PocConfig.
   await OtelFlutterBridge.initialize(

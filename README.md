@@ -27,7 +27,7 @@ Flutter tap ──► channel call ──► native code ──► native HTTP �
   [docs/specs/journey.md](docs/specs/journey.md).
 - **Runtime kill switch** and configuration from remote config.
 
-> Status: `0.1.0-dev`. Milestones M0 to M4 of the [roadmap](docs/roadmap.md)
+> Status: `0.2.0-dev`. Milestones M0 to M4 of the [roadmap](docs/roadmap.md)
 > are implemented; see [CHANGELOG.md](CHANGELOG.md) and the limitations below.
 
 ## Try it in 5 minutes
