@@ -167,7 +167,7 @@ class NativeBridge {
           ),
         );
       }
-      _pipeline.submitNativeLogs(batch.records);
+      recordNativeEvents(batch.records);
       return {'accepted': batch.records.length, 'rejected': batch.rejected};
     } catch (e) {
       onDiagnostic?.call(

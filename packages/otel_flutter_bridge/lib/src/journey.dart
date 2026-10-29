@@ -524,6 +524,18 @@ abstract final class Journey {
 void setJourneySync(void Function(Map<String, Object?> op)? send) =>
     Journey._sync = send;
 
+/// Adds journey events recorded in native code to the batch of Dart events,
+/// so they share requests instead of one request per native batch. Each
+/// one keeps the `session.id` it was recorded with; one without gets the
+/// current session. Dropped before `initialize`. Library use.
+void recordNativeEvents(List<pb.LogRecord> records) {
+  try {
+    Journey._recorder?.addNative(records);
+  } catch (_) {
+    // Telemetry never breaks the app.
+  }
+}
+
 /// The journey state, as sent to the native side in `ready`. Library use.
 Map<String, Object?> journeyState() => {
       'screen': AppContext.screen,
@@ -679,6 +691,36 @@ class JourneyRecorder {
         ..flags = sc.traceFlags.asByte;
     }
     _buffer.add(record);
+    if (_buffer.length >= maxBatchSize) {
+      flush();
+    } else {
+      _timer ??= Timer(scheduleDelay, flush);
+    }
+  }
+
+  /// Adds records built in native code to the batch, with the current
+  /// session when they have none.
+  void addNative(List<pb.LogRecord> records) {
+    if (records.isEmpty || !pipeline.enabled || !pipeline.exportsLogs) return;
+    String? sessionId;
+    for (final r in records) {
+      if (!r.attributes.any((kv) => kv.key == sessionIdKey)) {
+        sessionId ??= session.currentId;
+        r.attributes.add(
+          pb.KeyValue(
+              key: sessionIdKey, value: pb.AnyValue(stringValue: sessionId)),
+        );
+      }
+      r.attributes
+        ..removeWhere((kv) => kv.key == bridgeSourceKey)
+        ..add(
+          pb.KeyValue(
+            key: bridgeSourceKey,
+            value: pb.AnyValue(stringValue: bridgeSourceNative),
+          ),
+        );
+    }
+    _buffer.addAll(records);
     if (_buffer.length >= maxBatchSize) {
       flush();
     } else {

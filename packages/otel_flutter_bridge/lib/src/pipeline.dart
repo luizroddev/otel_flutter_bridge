@@ -174,23 +174,6 @@ class TelemetryPipeline {
     });
   }
 
-  /// Submits journey events recorded in native code. Each one keeps the
-  /// `session.id` it was recorded with; one without gets the current
-  /// session.
-  void submitNativeLogs(List<pb.LogRecord> records) {
-    if (!_enabled || _logTransport == null || records.isEmpty) return;
-    _guard(() {
-      final sessionId = _session.currentId;
-      for (final r in records) {
-        if (!r.attributes.any((kv) => kv.key == sessionIdKey)) {
-          _put(r.attributes, sessionIdKey, sessionId);
-        }
-        _put(r.attributes, bridgeSourceKey, bridgeSourceNative);
-      }
-    });
-    submitLogs(records);
-  }
-
   /// Adds resource attributes the native side knows (device model, OS
   /// version) to everything sent from now on. Keys already present keep
   /// their value; values that are not strings are ignored.

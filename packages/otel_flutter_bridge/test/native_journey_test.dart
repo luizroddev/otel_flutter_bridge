@@ -31,6 +31,7 @@ void main() {
   Future<void> init({
     Object? ready,
     SessionConfig session = const SessionConfig(),
+    Duration delay = const Duration(milliseconds: 10),
   }) async {
     messenger.setMockMethodCallHandler(bridge, (call) async {
       calls.add(call);
@@ -44,7 +45,7 @@ void main() {
       ),
       transport: traces,
       logTransport: logs,
-      scheduleDelay: const Duration(milliseconds: 10),
+      scheduleDelay: delay,
     );
   }
 
@@ -155,6 +156,29 @@ void main() {
       expect(action['otel_flutter_bridge.source'], 'native');
       expect(records[1].traceId, hasLength(16));
       expect(records[1].spanId, hasLength(8));
+    });
+
+    test('share requests with the Dart events (one batch, not one each)',
+        () async {
+      await init(delay: const Duration(minutes: 1));
+      final now = DateTime.now().microsecondsSinceEpoch * 1000;
+      for (var i = 0; i < 3; i++) {
+        await fromNative('exportEvents', {
+          'v': 1,
+          'events': [
+            {
+              'name': 'journey.screen.view',
+              'timeUnixNano': now + i,
+              'attributes': {'session.id': 's', 'app.screen.name': 'n$i'},
+            },
+          ],
+        });
+      }
+      Journey.screen(TScreen.home);
+      await OtelFlutterBridge.flush();
+      // Three native batches, the Dart screen view and session.start.
+      expect(logs.requests, hasLength(1));
+      expect(logs.records, hasLength(5));
     });
 
     test('a batch with another version is rejected whole', () {
