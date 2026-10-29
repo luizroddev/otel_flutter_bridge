@@ -16,17 +16,18 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
   `initialize`), through the same redaction (body always removed), limits
   and kill switch as spans.
 - `JourneyNavigatorObserver`: screen views from page routes.
-- `Journey.setUser` (`user.id`) and `OtelBridgeConfig.deviceId`
-  (`device.id`, resource).
+- `Journey.setUser` (`user.id`) and `OtelBridgeConfig.installationId`
+  (`app.installation.id`, resource). The library never sends `device.id`:
+  a receiver stamps it from the request it authenticates.
 - Dart spans carry `session.id`, `user.id` and the flow run
-  (`app.flow.instance_id`) from when they start; a session renewed later
+  (`journey.flow.instance_id`) from when they start; a session renewed later
   never takes older spans.
 - Breaking: `app.screen` / `app.flow` are now `app.screen.name` (semantic
-  conventions) / `app.flow.name`, on both sides of the channel.
+  conventions) / `journey.flow.name`, on both sides of the channel.
 - Example app: scenario 10, a fictional shop journey (login retry and
   purchase).
 - Nested flows: a flow started inside another becomes current, records
-  `app.flow.parent_instance_id`, and ending it makes the outer flow current
+  `journey.flow.parent_instance_id`, and ending it makes the outer flow current
   again (previously the context was cleared).
 - `Journey.track`: the event carries the screen, flow, user and session of
   when the body started, like the span (previously those of the end).
@@ -35,6 +36,19 @@ semantic versioning. Package changelogs: `packages/*/CHANGELOG.md`.
   if the SDK fails, the call goes out untraced.
 - `os.type` / `os.name` follow the semantic conventions (`darwin` / `iOS`,
   `linux` / `Android`); previously `os.type` was `ios` or `android`.
+- Journey contract version 2: the library's keys and event names live
+  under `journey.` (`journey.flow.name`, `journey.action`, ...), out of the
+  OpenTelemetry `app.` namespace; `app.screen.name` stays. Swift and Dart
+  share the new flow key.
+- `JourneyReason`: why an action or flow ended, sent as
+  `journey.outcome_reason` (`run.end(outcome, reason:)`, `Journey.event`,
+  `Journey.track(reason:)`). `JourneyFlowRun.end` now takes the outcome as
+  a required argument.
+- `session.start` event with `session.previous_id` when a session starts
+  (`SessionManager.onStart`; `Journey.sessionStarted` for custom
+  providers).
+- `docs/specs/journey.md`: a section for receivers (what to accept, ids
+  that must never be scrubbed, identity to stamp server side).
 
 ## 0.1.0-dev.3
 

@@ -26,8 +26,8 @@ R runWithRemoteAppContext<R>(AppContextValues values, R Function() fn) =>
     runZoned(fn, zoneValues: {_remoteValuesKey: values});
 
 /// Where the user is in the app: the current screen, flow and user. Stamped
-/// on every Dart span **when it starts**, as [appScreenKey], [appFlowKey],
-/// [appFlowInstanceKey] and [userIdKey].
+/// on every Dart span **when it starts**, as [appScreenKey], [journeyFlowKey],
+/// [journeyFlowInstanceKey] and [userIdKey].
 ///
 /// `Journey` keeps it up to date (`Journey.screen`, `Journey.startFlow`,
 /// `Journey.setUser`); set it directly only when you do not use `Journey`.
@@ -87,8 +87,10 @@ class AppContextSpanProcessor implements SpanProcessor {
       final flowId = values.flowId;
       final user = AppContext.userId;
       if (screen != null) span.setStringAttribute(appScreenKey, screen);
-      if (flow != null) span.setStringAttribute(appFlowKey, flow);
-      if (flowId != null) span.setStringAttribute(appFlowInstanceKey, flowId);
+      if (flow != null) span.setStringAttribute(journeyFlowKey, flow);
+      if (flowId != null) {
+        span.setStringAttribute(journeyFlowInstanceKey, flowId);
+      }
       if (user != null) span.setStringAttribute(userIdKey, user);
       final s = session;
       if (s != null) span.setStringAttribute(sessionIdKey, s.currentId);

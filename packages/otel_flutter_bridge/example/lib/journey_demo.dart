@@ -42,6 +42,9 @@ enum ShopAction with JourneyAction {
 
 enum LoginMethod { biometric, password }
 
+/// Why a step of the shop did not work.
+enum ShopReason with JourneyReason { invalidPassword, paymentDeclined }
+
 final _http = OtelHttpClient(http.Client());
 
 /// A synthetic session: login fails once, the retry works, then a purchase.
@@ -66,6 +69,7 @@ Future<String> runShopJourney() async {
       },
       attributes: {'app.login.attempt': attempt},
       outcome: (ok) => ok ? JourneyOutcome.success : JourneyOutcome.failure,
+      reason: (ok) => ok ? null : ShopReason.invalidPassword,
     );
     if (ok) break;
   }
@@ -89,7 +93,11 @@ Future<String> runShopJourney() async {
     },
     outcome: (s) => s == 200 ? JourneyOutcome.success : JourneyOutcome.failure,
   );
-  checkout.end(status == 200 ? JourneyOutcome.success : JourneyOutcome.failure);
+  if (status == 200) {
+    checkout.end(JourneyOutcome.success);
+  } else {
+    checkout.end(JourneyOutcome.failure, reason: ShopReason.paymentDeclined);
+  }
 
   await OtelFlutterBridge.flush();
   return status == 200

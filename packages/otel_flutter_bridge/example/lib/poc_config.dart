@@ -33,8 +33,8 @@ abstract final class PocConfig {
         serviceName: 'otel-bridge-poc',
         serviceVersion: '0.1.0',
         deploymentEnvironment: 'local',
-        // Fictional: a real app passes the installation id it already has.
-        deviceId: 'demo-device-1',
+        // Fictional: on iOS a real app passes identifierForVendor.
+        installationId: 'demo-install-1',
         exportLogs: _logs,
         endpoint: Uri.parse(endpoint.isEmpty ? 'http://unused' : endpoint),
         redaction: const RedactionConfig(

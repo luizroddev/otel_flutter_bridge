@@ -19,6 +19,7 @@ export 'src/journey.dart'
         JourneyFlow,
         JourneyFlowRun,
         JourneyOutcome,
+        JourneyReason,
         JourneyScreen;
 export 'src/journey_navigator_observer.dart';
 export 'src/native_batch.dart' show DecodedNativeBatch, decodeNativeBatch;

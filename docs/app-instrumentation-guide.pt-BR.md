@@ -215,7 +215,7 @@ Com `go_router` ou `auto_route`, faça o mesmo no listener do router, com o
   handler até o HTTP, o nativo e o backend.
 - **Jornada = a sessão**: todo span tem `session.id`. Filtrar por ela mostra
   a linha do tempo do usuário.
-- **Onde o usuário estava = `app.screen.name` e `app.flow.name`**, carimbados no
+- **Onde o usuário estava = `app.screen.name` e `journey.flow.name`**, carimbados no
   início de cada span (filhos herdam do pai, então um trace nunca mistura
   telas). Permite "todos os traces do fluxo `purchase`" ou "p95 de
   `orders.load` por tela".
@@ -399,7 +399,7 @@ eles dispararem continuam rastreadas pelo client, como raízes próprias.
 
 Por padrão, um evento disparado por `stream.listen` de outro Bloc, ou por
 uma chamada do nativo, inicia um trace novo. Na maioria dos casos isso é
-correto: são ações diferentes, ligadas pela sessão e pelo `app.flow.name`.
+correto: são ações diferentes, ligadas pela sessão e pelo `journey.flow.name`.
 
 Quando a causalidade importa para investigar (ex.: o push do nativo que
 dispara a sincronização), ligue os traces com um **span link**: "relacionado

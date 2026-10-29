@@ -26,8 +26,8 @@ Map<String, Object?> withTraceContext(
       args[channelContextKey] = {
         Traceparent.header: traceparent,
         if (app?.screen != null) appScreenKey: app!.screen,
-        if (app?.flow != null) appFlowKey: app!.flow,
-        if (app?.flowId != null) appFlowInstanceKey: app!.flowId,
+        if (app?.flow != null) journeyFlowKey: app!.flow,
+        if (app?.flowId != null) journeyFlowInstanceKey: app!.flowId,
       };
     }
   } catch (_) {
@@ -39,7 +39,7 @@ Map<String, Object?> withTraceContext(
 /// Runs [fn] as a continuation of the trace native code sent in
 /// [arguments] (see `OtelFlutterBridge.shared.withTraceContext` on iOS), so
 /// spans started in [fn] become children of the native span and take its
-/// `app.screen.name` / `app.flow.name`.
+/// `app.screen.name` / `journey.flow.name`.
 ///
 /// Use it at the top of a Dart `MethodChannel` handler that native code
 /// calls. Without trace context in [arguments], [fn] just runs.
@@ -67,8 +67,8 @@ Future<T> runWithTraceContext<T>(
           ),
         );
         final screen = otel[appScreenKey];
-        final flow = otel[appFlowKey];
-        final flowId = otel[appFlowInstanceKey];
+        final flow = otel[journeyFlowKey];
+        final flowId = otel[journeyFlowInstanceKey];
         app = (
           screen: screen is String ? screen : null,
           flow: flow is String ? flow : null,

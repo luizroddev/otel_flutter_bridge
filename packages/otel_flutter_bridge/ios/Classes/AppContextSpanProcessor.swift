@@ -2,7 +2,7 @@ import Foundation
 import OpenTelemetryApi
 import OpenTelemetrySdk
 
-/// Stamps `app.screen.name` / `app.flow.name` on native spans when they start.
+/// Stamps `app.screen.name` / `journey.flow.name` on native spans when they start.
 ///
 /// - A span with a local parent copies the parent's values.
 /// - A span continued from Dart (`startSpan(_:arguments:)`) takes the values

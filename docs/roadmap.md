@@ -14,7 +14,7 @@ not start.
 | M6 | Collector example forwarding to a vendor backend, token kept server side, collector-side redaction | App trace linked to the backend trace in the vendor UI | Open |
 | M7 | Offline buffer, flush on background, generic channel propagation, native Android bridge | No data lost in network-off and app-suspended tests | Open |
 | M8 | 1.0 on pub.dev, complete docs, contributions upstream to the Dart SDK | First stable release | Open |
-| M9 | Journey: screens, flows, actions and user as OTLP logs and spans ([spec](specs/journey.md)); journey dashboard | From a device or session, read what the user did and open the trace of each step | In progress (Dart done) |
+| M9 | Journey: screens, flows, actions and user as OTLP logs and spans ([spec](specs/journey.md)); journey dashboard | From a device or session, read what the user did and open the trace of each step | In progress (Dart done, contract v2) |
 
 ## M5 acceptance criteria
 

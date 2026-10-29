@@ -26,19 +26,27 @@ scrubbed name is a naming bug.
 
 ## Attributes
 
+OpenTelemetry advises against custom names inside its namespaces (such as
+`app.`) and recommends a prefix of your own for custom attributes. The
+library follows that: its keys live under `journey.` and
+`otel_flutter_bridge.`.
+
 | Prefix / key | Owner |
 |---|---|
-| OpenTelemetry semantic conventions (`http.*`, `url.*`, `server.*`, `rpc.*`, `error.*`, `exception.*`, `os.*`, `device.*`, `service.*`) | Standard |
-| `session.id` | Library |
+| OpenTelemetry semantic conventions (`http.*`, `url.*`, `server.*`, `rpc.*`, `error.*`, `exception.*`, `os.*`, `device.*`, `service.*`, `session.*`, `app.screen.name`, `app.installation.id`) | Standard |
+| `session.id`, `session.previous_id` | Standard keys, values from the library |
 | `otel_flutter_bridge.*` | Library only (`otel_flutter_bridge.source` = `dart` / `native`) |
-| `user.id`, `device.id` | Standard keys, values from the app (`Journey.setUser`, `OtelBridgeConfig.deviceId`); opaque ids, not scrubbed |
-| `app.screen.name`, `app.flow.name`, `app.flow.instance_id` | Defined by the library, values set through `Journey` (or `AppContext`); stamped at span start, always allowed |
-| Journey keys (`app.*.label`, `app.action.*`, `app.outcome`, `app.duration_ms`) | Defined by the library; see [journey.md](journey.md) |
-| `app.*` | The app using the library. Allowed by default, values scrubbed |
+| `user.id`, `app.installation.id` | Standard keys, values from the app (`Journey.setUser`, `OtelBridgeConfig.installationId`); opaque ids, not scrubbed |
+| `journey.*` | Library only: flow, action, outcome, reason, labels and durations; see [journey.md](journey.md). Always allowed |
+| `app.*` (other than the standard keys) | The app using the library. Allowed by default, values scrubbed |
+
+`app.` is allowed by default so an app's own attributes work without
+configuration. A stricter app uses its own prefix (`shop.`) and adds it to
+`RedactionConfig.allowedPrefixes`, as the conventions recommend.
+
+Do not use a name both as a key and as a prefix of other keys
+(`journey.outcome` and `journey.outcome.reason`): backends that nest dotted
+names, such as Elasticsearch, can reject one of them. Hence
+`journey.outcome_reason`.
 
 `rpc.system` for channel calls is `flutter_platform_channel`.
-
-## Open questions
-
-- Whether apps should get their own prefix instead of `app.`
-  (configurable through `RedactionConfig.allowedPrefixes`).

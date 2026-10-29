@@ -45,8 +45,8 @@ void main() {
 
     expect(attrs('checkout.confirm'),
         containsPair('app.screen.name', 'checkout.review'));
-    expect(
-        attrs('checkout.confirm'), containsPair('app.flow.name', 'purchase'));
+    expect(attrs('checkout.confirm'),
+        containsPair('journey.flow.name', 'purchase'));
   });
 
   test('children copy the local parent, even after navigation', () async {
@@ -79,7 +79,7 @@ void main() {
     OTel.tracer().startSpan('x.y').end();
     await OtelFlutterBridge.flush();
     expect(attrs('x.y').keys, isNot(contains('app.screen.name')));
-    expect(attrs('x.y').keys, isNot(contains('app.flow.name')));
+    expect(attrs('x.y').keys, isNot(contains('journey.flow.name')));
   });
 
   test('kept when the app replaces the allowed prefixes', () async {

@@ -107,7 +107,7 @@ void main() {
 
       expect(otel![Traceparent.header], isNotNull);
       expect(otel![appScreenKey], 'checkout.review');
-      expect(otel![appFlowKey], 'purchase');
+      expect(otel![journeyFlowKey], 'purchase');
     });
 
     test('no screen or flow, only traceparent', () async {
@@ -134,7 +134,7 @@ void main() {
         channelContextKey: {
           Traceparent.header: '00-$traceId-$parentId-01',
           appScreenKey: 'Orders',
-          appFlowKey: 'orders',
+          journeyFlowKey: 'orders',
         },
       };
       final tracer = OTel.tracer();
@@ -154,7 +154,7 @@ void main() {
       expect(_hex(sync.parentSpanId), parentId);
       expect(parse.parentSpanId, sync.spanId);
       expect(attrs(sync), containsPair('app.screen.name', 'Orders'));
-      expect(attrs(sync), containsPair('app.flow.name', 'orders'));
+      expect(attrs(sync), containsPair('journey.flow.name', 'orders'));
       expect(attrs(parse), containsPair('app.screen.name', 'Orders'));
     });
 
