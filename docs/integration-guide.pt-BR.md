@@ -5,6 +5,11 @@ Passo a passo para adicionar a biblioteca a um app add-to-app que já existe
 específico do seu app fica no seu app; a biblioteca não precisa de nenhuma
 alteração.
 
+Para adotar também o dashboard e um receptor no backend, com o
+levantamento e as decisões de arquitetura, veja o
+[guia de adoção](adoption-guide.pt-BR.md) e o
+[prompt de adoção](adoption-prompt.pt-BR.md) para um agente de IA.
+
 O caminho tem duas camadas, nesta ordem:
 
 1. **Jornada**: telas, fluxos, ações e o usuário, como eventos (logs OTLP).
