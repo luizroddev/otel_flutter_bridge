@@ -55,7 +55,8 @@ abstract final class OtelFlutterBridge {
   /// prints exception text. Use [onDiagnostic] for internal problems.
   ///
   /// Extension points:
-  /// - [transport] replaces the default OTLP/HTTP sender.
+  /// - [transport] replaces the default OTLP/HTTP sender (or the native
+  ///   one, with `config.sendThroughNative`).
   /// - [logTransport] replaces the default OTLP/HTTP sender of journey
   ///   events (`Journey`). Ignored when `config.exportLogs` is false.
   /// - [enrichers] add attributes to every span before redaction.
@@ -94,21 +95,36 @@ abstract final class OtelFlutterBridge {
         ..._platformAttributes(),
         ...config.resourceAttributes,
       };
+      NativeExport native(String signal, Uri url) => NativeExport(
+            signal,
+            url,
+            headers: config.headers,
+            timeout: config.exportTimeout,
+            gzip: config.gzip,
+          );
       final pipeline = TelemetryPipeline(
         transport: transport ??
-            OtlpHttpTransport(
-              config.tracesEndpoint,
-              headers: config.headers,
-              timeout: config.exportTimeout,
-            ),
+            (config.sendThroughNative
+                ? NativeTraceTransport(
+                    native('traces', config.tracesEndpoint),
+                  )
+                : OtlpHttpTransport(
+                    config.tracesEndpoint,
+                    headers: config.headers,
+                    timeout: config.exportTimeout,
+                    gzip: config.gzip,
+                  )),
         logTransport: !config.exportLogs
             ? null
             : logTransport ??
-                OtlpHttpLogTransport(
-                  config.logsEndpoint,
-                  headers: config.headers,
-                  timeout: config.exportTimeout,
-                ),
+                (config.sendThroughNative
+                    ? NativeLogTransport(native('logs', config.logsEndpoint))
+                    : OtlpHttpLogTransport(
+                        config.logsEndpoint,
+                        headers: config.headers,
+                        timeout: config.exportTimeout,
+                        gzip: config.gzip,
+                      )),
         redactor: Redactor(
           config.redaction,
           maxValueLength: config.limits.maxAttributeValueLength,

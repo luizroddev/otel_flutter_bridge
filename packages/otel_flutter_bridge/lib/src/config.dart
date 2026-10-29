@@ -14,6 +14,8 @@ class OtelBridgeConfig {
     this.deploymentEnvironment,
     this.installationId,
     this.exportLogs = true,
+    this.sendThroughNative = false,
+    this.gzip = false,
     this.enabled = true,
     this.sampleRatio = 1.0,
     this.headers = const {},
@@ -36,6 +38,8 @@ class OtelBridgeConfig {
       deploymentEnvironment: _string(map['deploymentEnvironment']),
       installationId: _string(map['installationId']),
       exportLogs: _bool(map['exportLogs']) ?? true,
+      sendThroughNative: _bool(map['sendThroughNative']) ?? false,
+      gzip: _bool(map['gzip']) ?? false,
       enabled: _bool(map['enabled']) ?? true,
       sampleRatio: (_num(map['sampleRatio']) ?? 1.0).toDouble().clamp(0, 1),
       headers: _stringMap(map['headers']),
@@ -73,6 +77,18 @@ class OtelBridgeConfig {
   /// [logsEndpoint]. Turn it off when the destination takes traces only
   /// (for example Jaeger).
   final bool exportLogs;
+
+  /// Whether requests go out through the native app's own network stack
+  /// (certificate pinning, gateway headers, mutual TLS) instead of Dart's
+  /// HTTP client: the Swift side sends them with
+  /// `OtelFlutterBridge.shared.exportHandler`. The library's own requests
+  /// are never traced. Ignored when `initialize` gets a transport.
+  final bool sendThroughNative;
+
+  /// Whether request bodies are gzip compressed (`Content-Encoding: gzip`,
+  /// part of OTLP/HTTP). Usually a fifth of the size; the receiver must
+  /// accept it.
+  final bool gzip;
 
   /// Base OTLP/HTTP endpoint, for example `https://collector.example.com`.
   /// `/v1/traces` is appended when missing. This is the only host the

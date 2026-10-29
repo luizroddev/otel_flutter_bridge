@@ -198,3 +198,34 @@ final class DeviceInfoTests: XCTestCase {
                    "17.5.1")
   }
 }
+
+final class TelemetryExportTests: XCTestCase {
+  private let export = TelemetryExport(
+    signal: "traces",
+    url: URL(string: "https://collector.example.com/v1/traces"),
+    headers: ["Content-Type": "application/x-protobuf", "Content-Encoding": "gzip"],
+    body: Data([1, 2, 3]))
+
+  func testBuildsAMarkedPost() throws {
+    let request = try XCTUnwrap(export.urlRequest())
+    XCTAssertEqual(request.url?.absoluteString, "https://collector.example.com/v1/traces")
+    XCTAssertEqual(request.httpMethod, "POST")
+    XCTAssertEqual(request.httpBody, Data([1, 2, 3]))
+    XCTAssertEqual(request.value(forHTTPHeaderField: "Content-Encoding"), "gzip")
+    XCTAssertTrue(request.isTelemetry)
+    // The mark survives copies and changes, as an API client adds headers.
+    var copy = request
+    copy.setValue("x", forHTTPHeaderField: "X-Gateway")
+    XCTAssertTrue(copy.isTelemetry)
+  }
+
+  func testTheAppCanUseItsOwnEndpoint() throws {
+    let request = try XCTUnwrap(export.urlRequest(endpoint: URL(string: "https://api.example.com/telemetry")))
+    XCTAssertEqual(request.url?.absoluteString, "https://api.example.com/telemetry/v1/traces")
+  }
+
+  func testOtherRequestsAreNotMarked() {
+    XCTAssertFalse(URLRequest(url: URL(string: "https://api.example.com")!).isTelemetry)
+    XCTAssertNil(TelemetryExport(signal: "logs", url: nil, headers: [:], body: Data()).urlRequest())
+  }
+}
